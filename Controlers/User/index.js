@@ -11,7 +11,7 @@ const crypto = require('crypto');
 
 // AES encryption function
 const encryptAES = (text) => {
-    const JWT_SECRET = process.env.TNO_V1_JWT_SECRET || "default-secret-key-for-testing";
+    const JWT_SECRET = process.env.JWT_SECRET || "default-secret-key-for-testing";
     const algorithm = 'aes-256-cbc';
     const key = crypto.createHash('sha256').update(JWT_SECRET).digest();
     const iv = crypto.randomBytes(16);
