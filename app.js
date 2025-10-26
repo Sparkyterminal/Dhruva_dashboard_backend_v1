@@ -51,12 +51,12 @@ app.disable('etag');
 const departmentRoutes = require("./Routes/department");
 const userRoutes = require("./Routes/User");
 const counterRoutes = require("./Routes/counter");
-
-
+const requestRoutes = require("./Routes/request");
 
 app.use(`${API_ROOT}department`, departmentRoutes);
 app.use(`${API_ROOT}user`, userRoutes);
 app.use(`${API_ROOT}counter`, counterRoutes);
+app.use(`${API_ROOT}request`, requestRoutes);
 
 
 

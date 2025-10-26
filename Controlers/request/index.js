@@ -1,0 +1,528 @@
+const STATUS = require("../../utils/statusCodes");
+const MESSAGE = require("../../utils/messages");
+
+const Request = require("../../Modals/Request");
+const { validationResult } = require("express-validator");
+const jwt = require('jsonwebtoken');
+
+const JWT_SECRET = process.env.JWT_SECRET;
+
+module.exports.createRequest = async (req, res) => {
+    const errors = validationResult(req);
+
+    if (!errors.isEmpty()) {
+        return res.status(STATUS.BAD_REQUEST).json({
+            message: 'Bad request',
+            errors: errors.array()
+        });
+    }
+
+    const token = req.get('Authorization');
+    let decodedToken = await jwt.decode(token);
+
+    // Only DEPARTMENT or ADMIN users can create requests
+    if (!['DEPARTMENT', 'ADMIN'].includes(decodedToken.role)) {
+        return res.status(STATUS.UNAUTHORISED).json({
+            message: MESSAGE.unauthorized,
+        });
+    }
+
+    try {
+        const {
+            purpose,
+            due_date,
+            amount,
+            priority,
+            note
+        } = req.body;
+
+        // Validate amount
+        if (isNaN(amount) || parseFloat(amount) <= 0) {
+            return res.status(STATUS.VALIDATION_FAILED).json({
+                message: 'Invalid amount',
+                field: 'amount'
+            });
+        }
+
+        // Validate due date
+        const dueDateObj = new Date(due_date);
+        if (isNaN(dueDateObj.getTime())) {
+            return res.status(STATUS.VALIDATION_FAILED).json({
+                message: 'Invalid due date format',
+                field: 'due_date'
+            });
+        }
+
+        // Get user to fetch their department
+        const User = require("../../Modals/User");
+        const user = await User.findById(decodedToken.uid);
+        
+        if (!user) {
+            return res.status(STATUS.NOT_FOUND).json({
+                message: 'User not found',
+            });
+        }
+
+        // Extract department from user
+        let departmentId = null;
+        if (user.department && user.department.department && user.department.department.length > 0) {
+            departmentId = user.department.department[0];
+        }
+
+        const request = new Request({
+            purpose: purpose.trim(),
+            due_date: dueDateObj,
+            amount: parseFloat(amount),
+            priority: priority || 'MEDIUM',
+            note: note ? note.trim() : '',
+            requested_by: decodedToken.uid,
+            department: departmentId,
+            status: 'PENDING'
+        });
+
+        const savedRequest = await request.save();
+
+        return res.status(STATUS.CREATED).json({
+            message: 'Request created successfully',
+            data: {
+                id: savedRequest.id,
+                purpose: savedRequest.purpose,
+                amount: savedRequest.amount,
+                due_date: savedRequest.due_date,
+                priority: savedRequest.priority,
+                status: savedRequest.status
+            }
+        });
+    } catch (error) {
+        console.error('Error creating request:', error);
+        return res.status(STATUS.INTERNAL_SERVER_ERROR).json({
+            message: MESSAGE.internalServerError,
+            error: error.message,
+        });
+    }
+};
+
+module.exports.getMyRequests = async (req, res) => {
+    const token = req.get('Authorization');
+    let decodedToken = await jwt.decode(token);
+
+    try {
+        const page = parseInt(req.query.page) || 1;
+        const size = parseInt(req.query.size) || 10;
+        const status = req.query.status;
+
+        let query = { 
+            requested_by: decodedToken.uid,
+            is_archived: false 
+        };
+
+        if (status) {
+            query.status = status;
+        }
+
+        const documentCount = await Request.countDocuments(query);
+        const requests = await Request.find(query)
+            .sort({ createdAt: -1 })
+            .skip((page - 1) * size)
+            .limit(size)
+            .populate('department', 'id name')
+            .exec();
+
+        return res.status(STATUS.SUCCESS).json({
+            currentPage: page,
+            items: requests,
+            totalItems: documentCount,
+            totalPages: Math.ceil(documentCount / size)
+        });
+    } catch (error) {
+        console.error('Error fetching requests:', error);
+        return res.status(STATUS.INTERNAL_SERVER_ERROR).json({
+            message: MESSAGE.internalServerError,
+            error: error.message,
+        });
+    }
+};
+
+module.exports.getMyRequestById = async (req, res) => {
+    const token = req.get('Authorization');
+    let decodedToken = await jwt.decode(token);
+
+    try {
+        const { id } = req.params;
+
+        const request = await Request.findOne({
+            _id: id,
+            requested_by: decodedToken.uid,
+            is_archived: false
+        })
+            .populate('requested_by', 'id first_name last_name')
+            .populate('department', 'id name')
+            .exec();
+
+        if (!request) {
+            return res.status(STATUS.NOT_FOUND).json({
+                message: 'Request not found',
+            });
+        }
+
+        return res.status(STATUS.SUCCESS).json({
+            data: request,
+            message: "Request Found"
+        });
+    } catch (error) {
+        console.error('Error fetching request:', error);
+        return res.status(STATUS.INTERNAL_SERVER_ERROR).json({
+            message: MESSAGE.internalServerError,
+            error: error.message,
+        });
+    }
+};
+
+module.exports.getAllRequests = async (req, res) => {
+    const token = req.get('Authorization');
+    let decodedToken = await jwt.decode(token);
+
+    // Only OWNER and ADMIN can view all requests
+    if (!['OWNER', 'ADMIN'].includes(decodedToken.role)) {
+        return res.status(STATUS.UNAUTHORISED).json({
+            message: MESSAGE.unauthorized,
+        });
+    }
+
+    try {
+        const page = parseInt(req.query.page) || 1;
+        const size = parseInt(req.query.size) || 10;
+        const status = req.query.status;
+        const priority = req.query.priority;
+        const department = req.query.department;
+
+        let query = { is_archived: false };
+
+        if (status) {
+            query.status = status;
+        }
+
+        if (priority) {
+            query.priority = priority;
+        }
+
+        if (department) {
+            query.department = department;
+        }
+
+        const documentCount = await Request.countDocuments(query);
+        const requests = await Request.find(query)
+            .sort({ createdAt: -1 })
+            .skip((page - 1) * size)
+            .limit(size)
+            .populate('requested_by', 'id first_name last_name email_data designation')
+            .populate('department', 'id name')
+            .populate('handled_by', 'id first_name last_name')
+            .exec();
+
+        return res.status(STATUS.SUCCESS).json({
+            currentPage: page,
+            items: requests,
+            totalItems: documentCount,
+            totalPages: Math.ceil(documentCount / size)
+        });
+    } catch (error) {
+        console.error('Error fetching requests:', error);
+        return res.status(STATUS.INTERNAL_SERVER_ERROR).json({
+            message: MESSAGE.internalServerError,
+            error: error.message,
+        });
+    }
+};
+
+module.exports.getRequestById = async (req, res) => {
+    const token = req.get('Authorization');
+    let decodedToken = await jwt.decode(token);
+
+    // Only OWNER and ADMIN can view specific request details
+    if (!['OWNER', 'ADMIN'].includes(decodedToken.role)) {
+        return res.status(STATUS.UNAUTHORISED).json({
+            message: MESSAGE.unauthorized,
+        });
+    }
+
+    try {
+        const { id } = req.params;
+
+        const request = await Request.findOne({
+            _id: id,
+            is_archived: false
+        })
+            .populate('requested_by', 'id first_name last_name email_data designation')
+            .populate('department', 'id name')
+            .populate('handled_by', 'id first_name last_name')
+            .exec();
+
+        if (!request) {
+            return res.status(STATUS.NOT_FOUND).json({
+                message: 'Request not found',
+            });
+        }
+
+        return res.status(STATUS.SUCCESS).json({
+            data: request,
+            message: "Request Found"
+        });
+    } catch (error) {
+        console.error('Error fetching request:', error);
+        return res.status(STATUS.INTERNAL_SERVER_ERROR).json({
+            message: MESSAGE.internalServerError,
+            error: error.message,
+        });
+    }
+};
+
+module.exports.updateRequestStatus = async (req, res) => {
+    const errors = validationResult(req);
+
+    if (!errors.isEmpty()) {
+        return res.status(STATUS.BAD_REQUEST).json({
+            message: 'Bad request',
+        });
+    }
+
+    const token = req.get('Authorization');
+    let decodedToken = await jwt.decode(token);
+
+    // Only OWNER and ADMIN can update request status
+    if (!['OWNER', 'ADMIN'].includes(decodedToken.role)) {
+        return res.status(STATUS.UNAUTHORISED).json({
+            message: MESSAGE.unauthorized,
+        });
+    }
+
+    try {
+        const { id } = req.params;
+        const { status } = req.body;
+
+        const request = await Request.findById(id);
+
+        if (!request) {
+            return res.status(STATUS.NOT_FOUND).json({
+                message: 'Request not found',
+            });
+        }
+
+        const updateData = {
+            status: status,
+            handled_by: decodedToken.uid
+        };
+
+        if (req.body.remarks) {
+            updateData.remarks = req.body.remarks.trim();
+        }
+
+        const updatedRequest = await Request.findByIdAndUpdate(
+            id,
+            updateData,
+            { new: true }
+        );
+
+        return res.status(STATUS.SUCCESS).json({
+            id: updatedRequest.id,
+            status: updatedRequest.status,
+            message: "Request Status Updated Successfully"
+        });
+    } catch (error) {
+        console.error('Error updating request status:', error);
+        return res.status(STATUS.INTERNAL_SERVER_ERROR).json({
+            message: MESSAGE.internalServerError,
+            error: error.message,
+        });
+    }
+};
+
+module.exports.updateReceivedAmount = async (req, res) => {
+    const errors = validationResult(req);
+
+    if (!errors.isEmpty()) {
+        return res.status(STATUS.BAD_REQUEST).json({
+            message: 'Bad request',
+        });
+    }
+
+    const token = req.get('Authorization');
+    let decodedToken = await jwt.decode(token);
+
+    // Only OWNER and ADMIN can update received amount
+    if (!['OWNER', 'ADMIN'].includes(decodedToken.role)) {
+        return res.status(STATUS.UNAUTHORISED).json({
+            message: MESSAGE.unauthorized,
+        });
+    }
+
+    try {
+        const { id } = req.params;
+        const { amount_received, received_amount } = req.body;
+
+        const request = await Request.findById(id);
+
+        if (!request) {
+            return res.status(STATUS.NOT_FOUND).json({
+                message: 'Request not found',
+            });
+        }
+
+        const updateData = {
+            amount_received: amount_received
+        };
+
+        if (received_amount !== undefined) {
+            const received = parseFloat(received_amount);
+            if (isNaN(received) || received < 0) {
+                return res.status(STATUS.VALIDATION_FAILED).json({
+                    message: 'Invalid received amount',
+                    field: 'received_amount'
+                });
+            }
+
+            updateData.received_amount = received;
+            updateData.total_received_amount = (request.total_received_amount || 0) + received;
+        }
+
+        const updatedRequest = await Request.findByIdAndUpdate(
+            id,
+            updateData,
+            { new: true }
+        );
+
+        return res.status(STATUS.SUCCESS).json({
+            id: updatedRequest.id,
+            amount_received: updatedRequest.amount_received,
+            received_amount: updatedRequest.received_amount,
+            total_received_amount: updatedRequest.total_received_amount,
+            message: "Amount Received Updated Successfully"
+        });
+    } catch (error) {
+        console.error('Error updating received amount:', error);
+        return res.status(STATUS.INTERNAL_SERVER_ERROR).json({
+            message: MESSAGE.internalServerError,
+            error: error.message,
+        });
+    }
+};
+
+module.exports.updateGivenAmount = async (req, res) => {
+    const errors = validationResult(req);
+
+    if (!errors.isEmpty()) {
+        return res.status(STATUS.BAD_REQUEST).json({
+            message: 'Bad request',
+        });
+    }
+
+    const token = req.get('Authorization');
+    let decodedToken = await jwt.decode(token);
+
+    // Only OWNER and ADMIN can update given amount
+    if (!['OWNER', 'ADMIN'].includes(decodedToken.role)) {
+        return res.status(STATUS.UNAUTHORISED).json({
+            message: MESSAGE.unauthorized,
+        });
+    }
+
+    try {
+        const { id } = req.params;
+        const { amount_given, given_amount, given_to_specific_work } = req.body;
+
+        const request = await Request.findById(id);
+
+        if (!request) {
+            return res.status(STATUS.NOT_FOUND).json({
+                message: 'Request not found',
+            });
+        }
+
+        const givenAmount = parseFloat(given_amount);
+        if (isNaN(givenAmount) || givenAmount < 0) {
+            return res.status(STATUS.VALIDATION_FAILED).json({
+                message: 'Invalid given amount',
+                field: 'given_amount'
+            });
+        }
+
+        if (!given_to_specific_work || given_to_specific_work.trim().length === 0) {
+            return res.status(STATUS.VALIDATION_FAILED).json({
+                message: 'Specific work description is required',
+                field: 'given_to_specific_work'
+            });
+        }
+
+        const updateData = {
+            amount_given: amount_given,
+            given_amount: givenAmount,
+            given_to_specific_work: given_to_specific_work.trim(),
+            handled_by: decodedToken.uid
+        };
+
+        const updatedRequest = await Request.findByIdAndUpdate(
+            id,
+            updateData,
+            { new: true }
+        );
+
+        return res.status(STATUS.SUCCESS).json({
+            id: updatedRequest.id,
+            amount_given: updatedRequest.amount_given,
+            given_amount: updatedRequest.given_amount,
+            given_to_specific_work: updatedRequest.given_to_specific_work,
+            message: "Amount Given Updated Successfully"
+        });
+    } catch (error) {
+        console.error('Error updating given amount:', error);
+        return res.status(STATUS.INTERNAL_SERVER_ERROR).json({
+            message: MESSAGE.internalServerError,
+            error: error.message,
+        });
+    }
+};
+
+module.exports.archiveRequest = async (req, res) => {
+    const token = req.get('Authorization');
+    let decodedToken = await jwt.decode(token);
+
+    // Only OWNER and ADMIN can archive requests
+    if (!['OWNER', 'ADMIN'].includes(decodedToken.role)) {
+        return res.status(STATUS.UNAUTHORISED).json({
+            message: MESSAGE.unauthorized,
+        });
+    }
+
+    try {
+        const { id } = req.params;
+
+        const request = await Request.findById(id);
+
+        if (!request) {
+            return res.status(STATUS.NOT_FOUND).json({
+                message: 'Request not found',
+            });
+        }
+
+        const updatedRequest = await Request.findByIdAndUpdate(
+            id,
+            { is_archived: !request.is_archived },
+            { new: true }
+        );
+
+        return res.status(STATUS.SUCCESS).json({
+            id: updatedRequest.id,
+            is_archived: updatedRequest.is_archived,
+            message: updatedRequest.is_archived 
+                ? "Request Archived Successfully" 
+                : "Request Restored Successfully"
+        });
+    } catch (error) {
+        console.error('Error archiving request:', error);
+        return res.status(STATUS.INTERNAL_SERVER_ERROR).json({
+            message: MESSAGE.internalServerError,
+            error: error.message,
+        });
+    }
+};
+
