@@ -17,6 +17,14 @@ router.post(
     userController.registerUserWithoutToken
   );
 
+  router.post(
+    "/login",
+    [
+      body("email_id").trim().not().isEmpty(),
+      body("password").trim().not().isEmpty(),
+    ],
+    userController.loginUsingEmail
+  );
 router.patch(
     "/status/:id",
     isAuth,
