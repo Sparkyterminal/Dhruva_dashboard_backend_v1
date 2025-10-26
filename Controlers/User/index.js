@@ -21,6 +21,75 @@ const encryptAES = (text) => {
     return `${iv.toString('hex')}:${encrypted}`;
 };
 
+module.exports.registerUserWithoutToken = async (req, res) => {
+    const errors = validationResult(req);
+  
+    if (!errors.isEmpty()) {
+      return res.status(STATUS.VALIDATION_FAILED).json({
+        message: "Bad request",
+      });
+    }
+  
+    const { first_name, last_name, email_id, password, phone_number, role } = req.body;
+  
+    const isFirstNameValid = await validations.validateName(first_name);
+    const isLastNameValid = await validations.validateName(last_name);
+    const isPasswordValid = await validations.validatePassword(password);
+    const isPhoneNumberValid = await validations.validatePhoneNumber(phone_number);
+  
+    if (
+      isFirstNameValid.status === false ||
+      isLastNameValid.status === false ||
+      email_id === "" ||
+      isPasswordValid.status === false ||
+      isPhoneNumberValid.status === false
+    ) {
+      const inputs_errors = [];
+      if (isFirstNameValid.status === false) inputs_errors.push("FIRST_NAME");
+      if (isLastNameValid.status === false) inputs_errors.push("LAST_NAME");
+      if (email_id === "") inputs_errors.push("EMAIL_ID");
+      if (isPasswordValid.status === false) inputs_errors.push("PASSWORD");
+      if (isPhoneNumberValid.status === false) inputs_errors.push("PHONE_NUMBER");
+  
+      return res.status(STATUS.VALIDATION_FAILED).json({
+        message: "Invalid Inputs",
+        fields: inputs_errors,
+      });
+    }
+  
+    const hashedPassword = await bcrypt.hash(password, 12);
+  
+    // Only use schema fields
+    let user = new User({
+      first_name: first_name.toLowerCase().replaceAll(/\s/g, ""),
+      last_name: last_name.toLowerCase().replaceAll(/\s/g, ""),
+      email_data: {
+        temp_email_id: email_id.toLowerCase(),
+        is_validated: true, // Mark as validated if this is your flow
+      },
+      password: hashedPassword,
+      phone_data: {
+        phone_number: phone_number,
+        is_validated: true, // Only if you are not doing OTP verification
+      },
+      role: role,
+    });
+  
+    try {
+      const savedUser = await user.save();
+  
+      return res.status(STATUS.CREATED).json({
+        message: "User Created Successfully",
+        data: savedUser.id,
+      });
+    } catch (error) {
+      return res.status(STATUS.BAD_REQUEST).json({
+        message: MESSAGE.badRequest,
+        error,
+      });
+    }
+  };
+
 module.exports.createUser = async (req, res) => {
     const errors = validationResult(req);
 

@@ -4,6 +4,19 @@ const { body } = require('express-validator');
 const isAuth = require('../../authentication/is-auth');
 const userController = require('../../Controlers/User');
 
+router.post(
+    "/register-token",
+    [
+      body("first_name").not().isEmpty(),
+      body("last_name").not().isEmpty(),
+      body("email_id").not().isEmpty(),
+      body("password").not().isEmpty(),
+      body("phone_number").not().isEmpty(),
+      body("role").not().isEmpty(),
+    ],
+    userController.registerUserWithoutToken
+  );
+
 router.patch(
     "/status/:id",
     isAuth,
