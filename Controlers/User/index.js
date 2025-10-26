@@ -90,6 +90,87 @@ module.exports.registerUserWithoutToken = async (req, res) => {
     }
   };
 
+  module.exports.loginUsingEmail = async (req,res) => {
+    const errors = validationResult(req);
+  
+    if (!errors.isEmpty()) {
+      return res.status(STATUS.BAD_REQUEST).json({
+        message: `Bad request`,
+      });
+    }
+  
+    const email_id = req.body.email_id.toLowerCase();
+    const password = req.body.password;
+  
+    try {
+      let user = await User.findOne({ "email_data.temp_email_id": email_id });
+
+
+  
+      if (!user) {
+        return res.status(STATUS.NOT_FOUND).json({
+          message: "User not found",
+        });
+      } else {
+        let loadedUser = user;
+
+        if(loadedUser.role === "TNO"){
+          return res.status(STATUS.BAD_REQUEST).json({
+            message: "Login using KGID",
+          });
+        }
+  
+        let isValidPassword = await bcrypt.compare(password, user.password);
+  
+        if (!isValidPassword) {
+          res.status(STATUS.UNAUTHORISED).json({
+            message: "Invalid password",
+          });
+        } else {
+          const accessToken = jwt.sign(
+            {
+              uid: loadedUser.id,
+              role: loadedUser.role,
+            },
+            JWT_SECRET,
+            { expiresIn: TOKEN_VALIDITY }
+          );
+  
+          const refreshToken = jwt.sign(
+            {
+              uid: loadedUser.id,
+              role: loadedUser.role,
+            },
+            JWT_SECRET,
+            { expiresIn: TOKEN_MAX_VALIDITY }
+          );
+  
+          const response_data = {
+            access_token: accessToken,
+            refresh_token: refreshToken,
+            user_id: loadedUser.id,
+            name: `${loadedUser.first_name} ${loadedUser.last_name}`,
+            k_name: `${loadedUser.first_k_name} ${loadedUser.last_k_name}`,
+            email_id: loadedUser.email_data.temp_email_id,
+            role: loadedUser.role,
+            is_dis: loadedUser.is_dis,
+          };
+  
+          return res.status(STATUS.SUCCESS).json({
+            message: "Login Successfull",
+            data: response_data,
+          });
+        }
+      }
+    } catch (error) {
+      //console.log(error);
+      return res.status(STATUS.INTERNAL_SERVER_ERROR).json({
+        message: MESSAGE.internalServerError,
+        error,
+      });
+    }
+};
+
 module.exports.createUser = async (req, res) => {
     const errors = validationResult(req);
 
