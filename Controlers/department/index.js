@@ -157,11 +157,11 @@ module.exports.getDepartments = async (req, res) => {
         
         if(status === null){
             documentCount = await Department.countDocuments({ is_archived: false });
-            departments = await Department.find({is_archived: false}, { id: 1, department_id: 1, name: 1, k_name: 1, is_active: 1 }).skip((pageInt - 1) * sizeInt).limit(sizeInt).sort({department_id: 1}).exec();
+            departments = await Department.find({is_archived: false}, { id: 1, department_id: 1, name: 1, is_active: 1 }).skip((pageInt - 1) * sizeInt).limit(sizeInt).sort({department_id: 1}).exec();
         }
         else{
             documentCount = await Department.find({ is_active: status, is_archived: false }).count();
-            departments = await Department.find({ is_active: status, is_archived: false },{ id: 1, department_id: 1, name: 1, k_name: 1, is_active: 1 }).skip((pageInt - 1) * sizeInt).limit(sizeInt).sort({department_id: 1}).exec();
+            departments = await Department.find({ is_active: status, is_archived: false },{ id: 1, department_id: 1, name: 1, is_active: 1 }).skip((pageInt - 1) * sizeInt).limit(sizeInt).sort({department_id: 1}).exec();
         }
 
         return res.status(STATUS.SUCCESS).json({
@@ -214,7 +214,7 @@ module.exports.updateDepartmentStatus = async (req, res) => {
             return res.status(STATUS.SUCCESS).json({
                 id: department.id,
                 name: department.name,
-                k_name: department.k_name,
+                // k_name: department.k_name,
                 is_active: department.is_active
             });
         }
@@ -261,7 +261,7 @@ module.exports.archiveOrActiveDepartment = async (req, res) => {
             return res.status(STATUS.SUCCESS).json({
                 id: department.id,
                 name: department.name,
-                k_name: department.k_name,
+                // k_name: department.k_name,
                 is_archived: department.is_archived
             });
         }
@@ -284,12 +284,12 @@ module.exports.getAllActiveDepartments = async (req, res) => {
     }
 
     try {
-        let departments = await Department.find({ is_active: true, is_archived: false },{ id: 1, department_id: 1, name: 1, k_name: 1 });
+        let departments = await Department.find({ is_active: true, is_archived: false },{ id: 1, department_id: 1, name: 1 });
         return res.status(STATUS.SUCCESS).json(departments);
     } 
     catch (error) {
-        //console.log(error);
-        return res.status(STATUS.BAD_REQUEST).json({
+        console.log(error);
+        return res.status(STATUS.INTERNAL_SERVER_ERROR).json({
             message: MESSAGE.internalServerError,
             error,
         });
@@ -308,8 +308,7 @@ module.exports.getSimilarDepartmentsByName = async (req, res) => {
     try {
         let { name } = req.params;
         if (!name) {
-            return res.status(STATUS.BAD_REQUEST).json({
-                error: MESSAGE.badRequest,
+                return res.status(STATUS.NOT_FOUND).json({
                 message: "name is required",
             });
         } 
@@ -325,8 +324,9 @@ module.exports.getSimilarDepartmentsByName = async (req, res) => {
             }
         }
     } catch (error) {
-        return res.status(STATUS.BAD_REQUEST).json({
+        return res.status(STATUS.INTERNAL_SERVER_ERROR).json({
             message: MESSAGE.internalServerError,
+            error,
         });
     }
 }
@@ -364,7 +364,7 @@ module.exports.updateDepartment = async (req, res) => {
         });
 
         if (!department) {
-            return res.status(STATUS.BAD_REQUEST).json({
+            return res.status(STATUS.NOT_FOUND).json({
                 message: "Department not updated",
             });
         } 
@@ -379,6 +379,7 @@ module.exports.updateDepartment = async (req, res) => {
         console.log(error);
         return res.status(STATUS.INTERNAL_SERVER_ERROR).json({
             message: MESSAGE.internalServerError,
+            error,
         });
     }
 }
@@ -419,6 +420,7 @@ module.exports.getThisDepartment = async (req, res) => {
     catch(error) {
         return res.status(STATUS.INTERNAL_SERVER_ERROR).json({
             message: MESSAGE.internalServerError,
+            error,
         });
     }
 }
