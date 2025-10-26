@@ -1,15 +1,8 @@
 const axios = require('axios');
 const crypto = require('crypto');
 
-const API_ROOT = process.env.TNO_V1_API_ROOT;
+const API_ROOT = process.env.API_ROOT;
 const JWT_SECRET = process.env.JWT_SECRET;
-
-const TNO_OWNER_SMS_USERNAME = process.env.TNO_OWNER_MOBILE_ONE_USERNAME;
-const TNO_OWNER_SMS_PASSWORD = process.env.TNO_OWNER_MOBILE_ONE_PASSWORD;
-const TNO_OWNER_SMS_SENDER_ID = process.env.TNO_OWNER_MOBILE_ONE_SENDER_ID;
-const TNO_OWNER_SMS_API_KEY = process.env.TNO_OWNER_MOBILE_ONE_API_KEY;
-const TNO_OWNER_SMS_TEMPLATE_ID = process.env.TNO_OWNER_MOBILE_ONE_TEMPLATE_ID;
-
 
 
 const generatePassword = () => {

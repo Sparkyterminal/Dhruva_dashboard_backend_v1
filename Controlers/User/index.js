@@ -11,7 +11,7 @@ const crypto = require('crypto');
 
 // AES encryption function
 const encryptAES = (text) => {
-    const JWT_SECRET = process.env.JWT_SECRET || "default-secret-key-for-testing";
+    const JWT_SECRET = process.env.JWT_SECRET 
     const algorithm = 'aes-256-cbc';
     const key = crypto.createHash('sha256').update(JWT_SECRET).digest();
     const iv = crypto.randomBytes(16);
@@ -20,6 +20,10 @@ const encryptAES = (text) => {
     encrypted += cipher.final('hex');
     return `${iv.toString('hex')}:${encrypted}`;
 };
+
+const JWT_SECRET = process.env.JWT_SECRET;
+const TOKEN_VALIDITY = process.env.TOKEN_VALIDITY;
+const TOKEN_MAX_VALIDITY = process.env.TOKEN_MAX_VALIDITY;
 
 module.exports.registerUserWithoutToken = async (req, res) => {
     const errors = validationResult(req);
@@ -88,7 +92,7 @@ module.exports.registerUserWithoutToken = async (req, res) => {
         error,
       });
     }
-  };
+  };    
 
   module.exports.loginUsingEmail = async (req,res) => {
     const errors = validationResult(req);
