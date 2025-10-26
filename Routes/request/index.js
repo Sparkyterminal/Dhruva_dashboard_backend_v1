@@ -44,37 +44,11 @@ router.get(
     requestController.getRequestById
 );
 
-// Owner can update request status
+// Owner can update request (status, received amount, etc.)
 router.patch(
-    "/:id/status",
+    "/:id",
     isAuth,
-    [
-        body('status').isIn(['PENDING', 'APPROVED', 'REJECTED', 'COMPLETED'])
-    ],
-    requestController.updateRequestStatus
-);
-
-// Owner can mark amount as received
-router.patch(
-    "/:id/received-amount",
-    isAuth,
-    [
-        body('amount_received').isBoolean(),
-        body('received_amount').isNumeric().optional()
-    ],
-    requestController.updateReceivedAmount
-);
-
-// Owner can mark amount given to specific work
-router.patch(
-    "/:id/given-amount",
-    isAuth,
-    [
-        body('amount_given').isBoolean(),
-        body('given_amount').isNumeric(),
-        body('given_to_specific_work').trim().not().isEmpty()
-    ],
-    requestController.updateGivenAmount
+    requestController.updateRequest
 );
 
 // Archive request

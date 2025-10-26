@@ -277,19 +277,11 @@ module.exports.getRequestById = async (req, res) => {
     }
 };
 
-module.exports.updateRequestStatus = async (req, res) => {
-    const errors = validationResult(req);
-
-    if (!errors.isEmpty()) {
-        return res.status(STATUS.BAD_REQUEST).json({
-            message: 'Bad request',
-        });
-    }
-
+module.exports.updateRequest = async (req, res) => {
     const token = req.get('Authorization');
     let decodedToken = await jwt.decode(token);
 
-    // Only OWNER and ADMIN can update request status
+    // Only OWNER and ADMIN can update requests
     if (!['OWNER', 'ADMIN'].includes(decodedToken.role)) {
         return res.status(STATUS.UNAUTHORISED).json({
             message: MESSAGE.unauthorized,
@@ -298,7 +290,13 @@ module.exports.updateRequestStatus = async (req, res) => {
 
     try {
         const { id } = req.params;
-        const { status } = req.body;
+        const {
+            status,
+            amount_received,
+            received_amount,
+            remarks,
+            is_active
+        } = req.body;
 
         const request = await Request.findById(id);
 
@@ -308,70 +306,26 @@ module.exports.updateRequestStatus = async (req, res) => {
             });
         }
 
-        const updateData = {
-            status: status,
-            handled_by: decodedToken.uid
-        };
+        // Build update data object with only provided fields
+        const updateData = {};
 
-        if (req.body.remarks) {
-            updateData.remarks = req.body.remarks.trim();
+        // Update status if provided
+        if (status !== undefined) {
+            if (!['PENDING', 'APPROVED', 'REJECTED', 'COMPLETED'].includes(status)) {
+                return res.status(STATUS.VALIDATION_FAILED).json({
+                    message: 'Invalid status. Must be: PENDING, APPROVED, REJECTED, COMPLETED',
+                    field: 'status'
+                });
+            }
+            updateData.status = status;
         }
 
-        const updatedRequest = await Request.findByIdAndUpdate(
-            id,
-            updateData,
-            { new: true }
-        );
-
-        return res.status(STATUS.SUCCESS).json({
-            id: updatedRequest.id,
-            status: updatedRequest.status,
-            message: "Request Status Updated Successfully"
-        });
-    } catch (error) {
-        console.error('Error updating request status:', error);
-        return res.status(STATUS.INTERNAL_SERVER_ERROR).json({
-            message: MESSAGE.internalServerError,
-            error: error.message,
-        });
-    }
-};
-
-module.exports.updateReceivedAmount = async (req, res) => {
-    const errors = validationResult(req);
-
-    if (!errors.isEmpty()) {
-        return res.status(STATUS.BAD_REQUEST).json({
-            message: 'Bad request',
-        });
-    }
-
-    const token = req.get('Authorization');
-    let decodedToken = await jwt.decode(token);
-
-    // Only OWNER and ADMIN can update received amount
-    if (!['OWNER', 'ADMIN'].includes(decodedToken.role)) {
-        return res.status(STATUS.UNAUTHORISED).json({
-            message: MESSAGE.unauthorized,
-        });
-    }
-
-    try {
-        const { id } = req.params;
-        const { amount_received, received_amount } = req.body;
-
-        const request = await Request.findById(id);
-
-        if (!request) {
-            return res.status(STATUS.NOT_FOUND).json({
-                message: 'Request not found',
-            });
+        // Update amount received status
+        if (amount_received !== undefined) {
+            updateData.amount_received = amount_received;
         }
 
-        const updateData = {
-            amount_received: amount_received
-        };
-
+        // Update received amount (adds to total)
         if (received_amount !== undefined) {
             const received = parseFloat(received_amount);
             if (isNaN(received) || received < 0) {
@@ -380,101 +334,47 @@ module.exports.updateReceivedAmount = async (req, res) => {
                     field: 'received_amount'
                 });
             }
-
             updateData.received_amount = received;
+            // Add to total received amount
             updateData.total_received_amount = (request.total_received_amount || 0) + received;
         }
 
-        const updatedRequest = await Request.findByIdAndUpdate(
-            id,
-            updateData,
-            { new: true }
-        );
-
-        return res.status(STATUS.SUCCESS).json({
-            id: updatedRequest.id,
-            amount_received: updatedRequest.amount_received,
-            received_amount: updatedRequest.received_amount,
-            total_received_amount: updatedRequest.total_received_amount,
-            message: "Amount Received Updated Successfully"
-        });
-    } catch (error) {
-        console.error('Error updating received amount:', error);
-        return res.status(STATUS.INTERNAL_SERVER_ERROR).json({
-            message: MESSAGE.internalServerError,
-            error: error.message,
-        });
-    }
-};
-
-module.exports.updateGivenAmount = async (req, res) => {
-    const errors = validationResult(req);
-
-    if (!errors.isEmpty()) {
-        return res.status(STATUS.BAD_REQUEST).json({
-            message: 'Bad request',
-        });
-    }
-
-    const token = req.get('Authorization');
-    let decodedToken = await jwt.decode(token);
-
-    // Only OWNER and ADMIN can update given amount
-    if (!['OWNER', 'ADMIN'].includes(decodedToken.role)) {
-        return res.status(STATUS.UNAUTHORISED).json({
-            message: MESSAGE.unauthorized,
-        });
-    }
-
-    try {
-        const { id } = req.params;
-        const { amount_given, given_amount, given_to_specific_work } = req.body;
-
-        const request = await Request.findById(id);
-
-        if (!request) {
-            return res.status(STATUS.NOT_FOUND).json({
-                message: 'Request not found',
-            });
+        // Update remarks
+        if (remarks !== undefined) {
+            updateData.remarks = remarks.trim();
         }
 
-        const givenAmount = parseFloat(given_amount);
-        if (isNaN(givenAmount) || givenAmount < 0) {
-            return res.status(STATUS.VALIDATION_FAILED).json({
-                message: 'Invalid given amount',
-                field: 'given_amount'
-            });
+        // Update is_active status
+        if (is_active !== undefined) {
+            updateData.is_active = is_active;
         }
 
-        if (!given_to_specific_work || given_to_specific_work.trim().length === 0) {
-            return res.status(STATUS.VALIDATION_FAILED).json({
-                message: 'Specific work description is required',
-                field: 'given_to_specific_work'
+        // Track who made the update
+        updateData.handled_by = decodedToken.uid;
+
+        // If no fields to update, return early
+        if (Object.keys(updateData).length === 0) {
+            return res.status(STATUS.BAD_REQUEST).json({
+                message: 'No fields provided to update',
             });
         }
-
-        const updateData = {
-            amount_given: amount_given,
-            given_amount: givenAmount,
-            given_to_specific_work: given_to_specific_work.trim(),
-            handled_by: decodedToken.uid
-        };
 
         const updatedRequest = await Request.findByIdAndUpdate(
             id,
             updateData,
             { new: true }
-        );
+        )
+            .populate('requested_by', 'id first_name last_name email_data designation')
+            .populate('department', 'id name')
+            .populate('handled_by', 'id first_name last_name')
+            .exec();
 
         return res.status(STATUS.SUCCESS).json({
-            id: updatedRequest.id,
-            amount_given: updatedRequest.amount_given,
-            given_amount: updatedRequest.given_amount,
-            given_to_specific_work: updatedRequest.given_to_specific_work,
-            message: "Amount Given Updated Successfully"
+            data: updatedRequest,
+            message: "Request Updated Successfully"
         });
     } catch (error) {
-        console.error('Error updating given amount:', error);
+        console.error('Error updating request:', error);
         return res.status(STATUS.INTERNAL_SERVER_ERROR).json({
             message: MESSAGE.internalServerError,
             error: error.message,

@@ -57,30 +57,16 @@ const requestSchema = new Schema(
             default: 0,
             min: 0
         },
-        // amount_given: {
-        //     type: Boolean,
-        //     default: false
-        // },
-        // given_amount: {
-        //     type: Number,
-        //     default: 0,
-        //     min: 0
-        // },
-        // given_to_specific_work: {
-        //     type: String,
-        //     required: false,
-        //     trim: true
-        // },
-        // remarks: {
-        //     type: String,
-        //     required: false,
-        //     trim: true
-        // },
-        // handled_by: {
-        //     type: ObjectId,
-        //     ref: 'user',
-        //     required: false
-        // },
+        remarks: {
+            type: String,
+            required: false,
+            trim: true
+        },
+        handled_by: {
+            type: ObjectId,
+            ref: 'user',
+            required: false
+        },
         is_active: {
             type: Boolean,
             default: true
