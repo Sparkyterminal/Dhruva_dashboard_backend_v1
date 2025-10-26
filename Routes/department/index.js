@@ -34,7 +34,7 @@ router.post(
     isAuth,
     [
         body('name').not().isEmpty(),
-        body('k_name').trim().not().isEmpty()
+        // body('k_name').trim().not().isEmpty()
     ],
     departmentController.createDepartment
 );
