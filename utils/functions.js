@@ -2,7 +2,7 @@ const axios = require('axios');
 const crypto = require('crypto');
 
 const API_ROOT = process.env.TNO_V1_API_ROOT;
-const JWT_SECRET = process.env.TNO_V1_JWT_SECRET;
+const JWT_SECRET = process.env.JWT_SECRET;
 
 const TNO_OWNER_SMS_USERNAME = process.env.TNO_OWNER_MOBILE_ONE_USERNAME;
 const TNO_OWNER_SMS_PASSWORD = process.env.TNO_OWNER_MOBILE_ONE_PASSWORD;
