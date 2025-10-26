@@ -606,16 +606,21 @@ module.exports.getThisUser = async (req, res) => {
 };
 
 module.exports.updateUser = async (req, res) => {
-    const errors = validationResult(req);
-
-    if (!errors.isEmpty()) {
-        return res.status(STATUS.BAD_REQUEST).json({
-            message: 'Bad request',
+    const token = req.get('Authorization');
+    if (!token) {
+        return res.status(STATUS.UNAUTHORISED).json({
+            message: 'Authorization token is required',
         });
     }
 
-    const token = req.get('Authorization');
-    let decodedToken = await jwt.decode(token);
+    let decodedToken;
+    try {
+        decodedToken = await jwt.decode(token);
+    } catch (error) {
+        return res.status(STATUS.UNAUTHORISED).json({
+            message: 'Invalid token',
+        });
+    }
 
     if (decodedToken.role !== 'ADMIN') {
         return res.status(STATUS.UNAUTHORISED).json({
@@ -638,33 +643,46 @@ module.exports.updateUser = async (req, res) => {
         // Build update data
         const updateData = {};
 
-        if (first_name) {
-            if (typeof first_name === 'string' && first_name.trim().length > 0) {
-                const isNameValid = await validations.validateName(first_name);
-                if (!isNameValid.status) {
-                    return res.status(STATUS.VALIDATION_FAILED).json({
-                        message: 'First name should contain only letters and spaces',
-                        field: 'first_name'
-                    });
-                }
-                updateData.first_name = first_name.toLowerCase().trim();
+        // Validate and update first name
+        if (first_name !== undefined) {
+            if (!first_name || typeof first_name !== 'string' || first_name.trim().length === 0) {
+                return res.status(STATUS.VALIDATION_FAILED).json({
+                    message: 'First name cannot be empty',
+                    field: 'first_name'
+                });
             }
+
+            const isNameValid = await validations.validateName(first_name);
+            if (!isNameValid.status) {
+                return res.status(STATUS.VALIDATION_FAILED).json({
+                    message: 'First name should contain only letters and spaces',
+                    field: 'first_name'
+                });
+            }
+            updateData.first_name = first_name.toLowerCase().trim();
         }
 
-        if (last_name) {
-            if (typeof last_name === 'string' && last_name.trim().length > 0) {
-                const isNameValid = await validations.validateName(last_name);
-                if (!isNameValid.status) {
-                    return res.status(STATUS.VALIDATION_FAILED).json({
-                        message: 'Last name should contain only letters and spaces',
-                        field: 'last_name'
-                    });
-                }
-                updateData.last_name = last_name.toLowerCase().trim();
+        // Validate and update last name
+        if (last_name !== undefined) {
+            if (!last_name || typeof last_name !== 'string' || last_name.trim().length === 0) {
+                return res.status(STATUS.VALIDATION_FAILED).json({
+                    message: 'Last name cannot be empty',
+                    field: 'last_name'
+                });
             }
+
+            const isNameValid = await validations.validateName(last_name);
+            if (!isNameValid.status) {
+                return res.status(STATUS.VALIDATION_FAILED).json({
+                    message: 'Last name should contain only letters and spaces',
+                    field: 'last_name'
+                });
+            }
+            updateData.last_name = last_name.toLowerCase().trim();
         }
 
-        if (role) {
+        // Validate and update role
+        if (role !== undefined) {
             if (!['ADMIN', 'DEPARTMENT', 'OWNER'].includes(role)) {
                 return res.status(STATUS.VALIDATION_FAILED).json({
                     message: 'Invalid role. Must be one of: ADMIN, DEPARTMENT, OWNER',
@@ -674,60 +692,65 @@ module.exports.updateUser = async (req, res) => {
             updateData.role = role;
         }
 
-        if (designation) {
-            updateData.designation = designation.trim();
+        // Update designation
+        if (designation !== undefined) {
+            updateData.designation = designation ? designation.trim() : '';
         }
 
         // Validate and update email
-        if (email_data && email_data.email_id) {
-            const isEmailValid = await validations.validateEmailID(email_data.email_id);
-            if (!isEmailValid.status) {
-                return res.status(STATUS.VALIDATION_FAILED).json({
-                    message: 'Invalid email format',
-                    field: 'email_data.email_id'
-                });
-            }
+        if (email_data) {
+            if (email_data.email_id) {
+                const isEmailValid = await validations.validateEmailID(email_data.email_id);
+                if (!isEmailValid.status) {
+                    return res.status(STATUS.VALIDATION_FAILED).json({
+                        message: 'Invalid email format',
+                        field: 'email_data.email_id'
+                    });
+                }
 
-            // Check if email is already taken by another user
-            const userWithEmail = await User.findOne({ 
-                'email_data.email_id': email_data.email_id.toLowerCase(),
-                _id: { $ne: id }
-            });
-            
-            if (userWithEmail) {
-                return res.status(STATUS.FORBIDDEN).json({
-                    message: 'Email already exists',
+                // Check if email is already taken by another user
+                const userWithEmail = await User.findOne({ 
+                    'email_data.email_id': email_data.email_id.toLowerCase(),
+                    _id: { $ne: id }
                 });
-            }
+                
+                if (userWithEmail) {
+                    return res.status(STATUS.FORBIDDEN).json({
+                        message: 'Email already exists',
+                    });
+                }
 
-            updateData['email_data.email_id'] = email_data.email_id.toLowerCase().trim();
-            let encryptedEmail = encryptAES(email_data.email_id.toLowerCase());
-            updateData['email_data.temp_email_id'] = encryptedEmail;
+                updateData['email_data.email_id'] = email_data.email_id.toLowerCase().trim();
+                let encryptedEmail = encryptAES(email_data.email_id.toLowerCase());
+                updateData['email_data.temp_email_id'] = encryptedEmail;
+            }
         }
 
         // Validate and update phone
-        if (phone_data && phone_data.phone_number) {
-            const isPhoneValid = await validations.validatePhoneNumber(phone_data.phone_number);
-            if (!isPhoneValid.status) {
-                return res.status(STATUS.VALIDATION_FAILED).json({
-                    message: 'Invalid phone number format',
-                    field: 'phone_data.phone_number'
-                });
-            }
+        if (phone_data) {
+            if (phone_data.phone_number) {
+                const isPhoneValid = await validations.validatePhoneNumber(phone_data.phone_number);
+                if (!isPhoneValid.status) {
+                    return res.status(STATUS.VALIDATION_FAILED).json({
+                        message: 'Invalid phone number format (must be 10 digits starting with 6-9)',
+                        field: 'phone_data.phone_number'
+                    });
+                }
 
-            // Check if phone is already taken by another user
-            const userWithPhone = await User.findOne({ 
-                'phone_data.phone_number': phone_data.phone_number,
-                _id: { $ne: id }
-            });
-            
-            if (userWithPhone) {
-                return res.status(STATUS.FORBIDDEN).json({
-                    message: 'Phone number already exists',
+                // Check if phone is already taken by another user
+                const userWithPhone = await User.findOne({ 
+                    'phone_data.phone_number': phone_data.phone_number,
+                    _id: { $ne: id }
                 });
-            }
+                
+                if (userWithPhone) {
+                    return res.status(STATUS.FORBIDDEN).json({
+                        message: 'Phone number already exists',
+                    });
+                }
 
-            updateData['phone_data.phone_number'] = phone_data.phone_number.trim();
+                updateData['phone_data.phone_number'] = phone_data.phone_number.trim();
+            }
         }
 
         // Validate and update departments
@@ -737,11 +760,11 @@ module.exports.updateUser = async (req, res) => {
             
             if (Array.isArray(department)) {
                 departments = department;
-            } else if (typeof department === 'string') {
+            } else if (typeof department === 'string' && department.trim() !== '') {
                 departments = department.split(',').map(d => d.trim()).filter(d => d);
             }
 
-            // Validate that all department IDs exist
+            // Validate that all department IDs exist (if any provided)
             if (departments.length > 0) {
                 const existingDepartments = await Department.find({
                     _id: { $in: departments },
@@ -761,18 +784,26 @@ module.exports.updateUser = async (req, res) => {
             updateData['department.department'] = departments;
         }
 
+        // If no fields to update, return early
+        if (Object.keys(updateData).length === 0) {
+            return res.status(STATUS.BAD_REQUEST).json({
+                message: 'No fields provided to update',
+            });
+        }
+
         let user = await User.findByIdAndUpdate(id, updateData, { new: true });
 
         if (!user) {
-            return res.status(STATUS.BAD_REQUEST).json({
-                message: "User not updated",
-            });
-        } else {
-            return res.status(STATUS.SUCCESS).json({
-                id: user.id,
-                message: "User Updated Successfully"
+            return res.status(STATUS.NOT_FOUND).json({
+                message: "User not found",
             });
         }
+
+        return res.status(STATUS.SUCCESS).json({
+            id: user.id,
+            message: "User Updated Successfully"
+        });
+        
     } catch (error) {
         console.error('Error updating user:', error);
         

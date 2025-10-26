@@ -43,11 +43,6 @@ router.patch(
 router.patch(
     "/:id",
     isAuth,
-    [
-        body('first_name').trim().not().isEmpty(),
-        body('last_name').trim().not().isEmpty(),
-        body('phone_data.phone_number').trim().not().isEmpty()
-    ],
     userController.updateUser
 );
 
