@@ -1039,3 +1039,62 @@ module.exports.deleteUser = async (req, res) => {
     }
 };
 
+module.exports.changeUserPassword = async (req, res) => {
+    const errors = validationResult(req);
+  
+    if (!errors.isEmpty()) {
+      return res.status(STATUS.BAD_REQUEST).json({
+        message: `Bad request`,
+      });
+    }
+  
+    const token = req.get("Authorization");
+    let decodedToken = await jwt.decode(token);
+  
+    let user = null;
+  
+    try {
+      const getUserReq = await User.findOne({
+        _id: decodedToken.uid,
+        is_active: true,
+        is_archived: false,
+      });
+      if (getUserReq) {
+        user = getUserReq;
+      } else {
+        return res.status(STATUS.NOT_FOUND).json({
+          message: "User not found",
+        });
+      }
+    } catch (error) {
+      return res.status(STATUS.BAD_REQUEST).json({
+        message: MESSAGE.internalServerError,
+        error,
+      });
+    }
+  
+    const isPasswordValid = await validations.validatePassword(req.body.password);
+  
+    if (isPasswordValid.status === false) {
+      return res.status(STATUS.VALIDATION_FAILED).json({
+        message: "Invalid password",
+      });
+    } else {
+      const hashedPassword = await bcrypt.hash(req.body.password, 12);
+      user.password = hashedPassword;
+  
+      try {
+        const savedUser = await user.save();
+  
+        return res.status(STATUS.SUCCESS).json({
+          message: "User Updated Successfully",
+          data: savedUser.id,
+        });
+      } catch (error) {
+        return res.status(STATUS.BAD_REQUEST).json({
+          message: MESSAGE.badRequest,
+          error,
+        });
+      }
+    }
+  };
