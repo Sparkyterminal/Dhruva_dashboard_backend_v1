@@ -32,20 +32,7 @@ module.exports.createUser = async (req, res) => {
     }
 
     const token = req.get('Authorization');
-    if (!token) {
-        return res.status(STATUS.UNAUTHORISED).json({
-            message: 'Authorization token is required',
-        });
-    }
-
-    let decodedToken;
-    try {
-        decodedToken = await jwt.decode(token);
-    } catch (error) {
-        return res.status(STATUS.UNAUTHORISED).json({
-            message: 'Invalid token',
-        });
-    }
+    let decodedToken = await jwt.decode(token);
 
     // Only ADMIN can create users
     if (decodedToken.role !== 'ADMIN') {
@@ -480,20 +467,7 @@ module.exports.updateUser = async (req, res) => {
     }
 
     const token = req.get('Authorization');
-    if (!token) {
-        return res.status(STATUS.UNAUTHORISED).json({
-            message: 'Authorization token is required',
-        });
-    }
-
-    let decodedToken;
-    try {
-        decodedToken = await jwt.decode(token);
-    } catch (error) {
-        return res.status(STATUS.UNAUTHORISED).json({
-            message: 'Invalid token',
-        });
-    }
+    let decodedToken = await jwt.decode(token);
 
     if (decodedToken.role !== 'ADMIN') {
         return res.status(STATUS.UNAUTHORISED).json({
