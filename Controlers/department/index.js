@@ -351,11 +351,11 @@ module.exports.updateDepartment = async (req, res) => {
 
     try{
         let { id } = req.params;
-        let k_name = req.body.k_name;
+        // let k_name = req.body.k_name;
         let name = req.body.name;
 
         const data = {
-            k_name: k_name,
+            // k_name: k_name,
             name: name
         }
 
