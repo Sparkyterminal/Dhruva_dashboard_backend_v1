@@ -606,21 +606,16 @@ module.exports.getThisUser = async (req, res) => {
 };
 
 module.exports.updateUser = async (req, res) => {
-    const token = req.get('Authorization');
-    if (!token) {
-        return res.status(STATUS.UNAUTHORISED).json({
-            message: 'Authorization token is required',
+    const errors = validationResult(req);
+
+    if (!errors.isEmpty()) {
+        return res.status(STATUS.BAD_REQUEST).json({
+            message: 'Bad request',
         });
     }
 
-    let decodedToken;
-    try {
-        decodedToken = await jwt.decode(token);
-    } catch (error) {
-        return res.status(STATUS.UNAUTHORISED).json({
-            message: 'Invalid token',
-        });
-    }
+    const token = req.get('Authorization');
+    let decodedToken = await jwt.decode(token);
 
     if (decodedToken.role !== 'ADMIN') {
         return res.status(STATUS.UNAUTHORISED).json({
