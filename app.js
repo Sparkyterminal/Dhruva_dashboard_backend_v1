@@ -2,7 +2,7 @@ const express = require('express');
 require('dotenv').config();
 
 const app = express();
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 4010;
 const mongoose = require("mongoose");
 const morgan = require("morgan");
 const helmet = require("helmet");
@@ -49,8 +49,10 @@ app.use(`${API_ROOT}assets`, express.static(path.join(__dirname, "assets")));
 app.disable('etag');
 
 const departmentRoutes = require("./Routes/department");
+const userRoutes = require("./Routes/User");
 
 app.use(`${API_ROOT}department`, departmentRoutes);
+app.use(`${API_ROOT}user`, userRoutes);
 
 
 
@@ -66,53 +68,20 @@ app.get('/', (req, res) => {
   
   // Database connection
   try {
-      const DB_URL = process.env.DB_URL || "mongodb://localhost:27017/Membership";
-      const DB_PORT = process.env.PORT || PORT;
-  
-      mongoose.connect(DB_URL, { useNewUrlParser: true, useUnifiedTopology: true })
-          .then(async () => {
-              console.log("DB Connection Successful");
-              try {
-                // Sync indexes for membership_submission to ensure sparse unique index on membershipId
-                const { MembershipSubmission } = require('./Modals/Membership');
-                const collection = mongoose.connection.collection('membership_submissions');
-                try {
-                  const existing = await collection.indexes();
-                  for (const idx of existing) {
-                    if (idx.key && idx.key.membershipId === 1) {
-                      await collection.dropIndex(idx.name);
-                      console.log(`Dropped existing membershipId index ${idx.name}`);
-                    }
-                  }
-                } catch (e) {
-                  console.warn('Unable to inspect/drop indexes for membership_submissions:', e?.message || e);
-                }
+    const DB_URL = process.env.DB_URL || "mongodb://localhost:27017/dashboard";
+    const DB_PORT = process.env.PORT || PORT;
 
-                // Create the correct partial unique index explicitly
-                try {
-                  await collection.createIndex(
-                    { membershipId: 1 },
-                    { unique: true, name: 'membershipId_unique_partial', partialFilterExpression: { membershipId: { $type: 'string' } } }
-                  );
-                  console.log('Ensured partial unique index on membershipId');
-                } catch (e) {
-                  console.warn('Error ensuring partial unique index on membershipId:', e?.message || e);
-                }
-
-                // Also run Mongoose sync as a safety net
-                await MembershipSubmission.syncIndexes();
-                console.log('Indexes synced for MembershipSubmission');
-              } catch (idxErr) {
-                console.warn('Failed to sync indexes for MembershipSubmission:', idxErr?.message || idxErr);
-              }
-              app.listen(DB_PORT, () => {
-                  console.log(`Server is running on port ${DB_PORT}`);
-              });
-          })
-          .catch(err => {
-              console.log("Error in connecting to DB:", err);
-          });
-  } catch (error) {
+    mongoose.connect(DB_URL, { useNewUrlParser: true, useUnifiedTopology: true })
+        .then(() => {
+            console.log("DB Connection Successful");
+            app.listen(DB_PORT, () => {
+                console.log(`Server is running on port ${DB_PORT}`);
+            });
+        })
+        .catch(err => {
+            console.error("Error in connecting to DB:", err);
+        });
+} catch (error) {
       console.log("Error in connecting to DB:", error);
   }
   
