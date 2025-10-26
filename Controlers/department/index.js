@@ -274,6 +274,71 @@ module.exports.archiveOrActiveDepartment = async (req, res) => {
     }
 }
 
+module.exports.deleteDepartment = async (req, res) => {
+    const errors = validationResult(req);
+
+    if (!errors.isEmpty()) {
+        return res.status(STATUS.BAD_REQUEST).json({
+            message: `Bad request`,
+        });
+    }
+
+    const token = req.get('Authorization');
+    let decodedToken = await jwt.decode(token);
+
+    if(decodedToken.role != "ADMIN"){
+        return res.status(STATUS.UNAUTHORISED).json({
+            message: MESSAGE.unauthorized,
+        });
+    }
+
+    try {
+        let { id } = req.params;
+
+        // Check if department exists
+        const department = await Department.findById(id);
+        if (!department) {
+            return res.status(STATUS.NOT_FOUND).json({
+                message: 'Department not found',
+            });
+        }
+
+        // TODO: Optional - Check if department is assigned to any users
+        // const User = require("../../Modals/User");
+        // const usersWithDepartment = await User.find({ 
+        //     'department.department': id 
+        // }).count();
+        // 
+        // if (usersWithDepartment > 0) {
+        //     return res.status(STATUS.FORBIDDEN).json({
+        //         message: 'Cannot delete department. It is assigned to one or more users.',
+        //     });
+        // }
+
+        // Delete the department
+        const deletedDepartment = await Department.findByIdAndDelete(id);
+
+        if (!deletedDepartment) {
+            return res.status(STATUS.NOT_FOUND).json({
+                message: 'Department not found or could not be deleted',
+            });
+        }
+
+        return res.status(STATUS.SUCCESS).json({
+            message: 'Department deleted successfully',
+            id: deletedDepartment.id,
+            name: deletedDepartment.name
+        });
+
+    } catch (error) {
+        console.error('Error deleting department:', error);
+        return res.status(STATUS.INTERNAL_SERVER_ERROR).json({
+            message: MESSAGE.internalServerError,
+            error: error.message,
+        });
+    }
+}
+
 module.exports.getAllActiveDepartments = async (req, res) => {
     const errors = validationResult(req);
 

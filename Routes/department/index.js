@@ -19,6 +19,12 @@ router.patch(
     departmentController.archiveOrActiveDepartment
 );
 
+router.delete(
+    "/:id",
+    isAuth,
+    departmentController.deleteDepartment
+);
+
 router.patch(
     "/:id",
     isAuth,
