@@ -24,7 +24,7 @@ router.patch(
     isAuth,
     [
         body('name').trim().not().isEmpty(),
-        body('k_name').trim().not().isEmpty()
+        // body('k_name').trim().not().isEmpty()
     ],
     departmentController.updateDepartment
 );
