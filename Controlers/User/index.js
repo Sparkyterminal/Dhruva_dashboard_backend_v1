@@ -144,7 +144,7 @@ module.exports.registerUserWithoutToken = async (req, res) => {
             refresh_token: refreshToken,
             user_id: loadedUser.id,
             name: `${loadedUser.first_name} ${loadedUser.last_name}`,
-            k_name: `${loadedUser.first_k_name} ${loadedUser.last_k_name}`,
+            // k_name: `${loadedUser.first_k_name} ${loadedUser.last_k_name}`,
             email_id: loadedUser.email_data.temp_email_id,
             role: loadedUser.role,
             is_dis: loadedUser.is_dis,
