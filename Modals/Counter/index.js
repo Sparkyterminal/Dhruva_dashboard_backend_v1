@@ -7,11 +7,10 @@ const counterSchema = new Schema(
         entity: {
             type: String,
             enum: [
-                'PROJECT',
-                'MEETING',
+                'DEPARTMENT',
 
             ],
-            default: 'PROJECT'
+            default: 'DEPARTMENT'
         },
         count: {
             type: Number,
