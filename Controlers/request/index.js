@@ -292,8 +292,7 @@ module.exports.updateRequest = async (req, res) => {
         const { id } = req.params;
         const {
             status,
-            amount_received,
-            received_amount,
+            amount_paid,
             remarks,
             is_active
         } = req.body;
@@ -321,22 +320,22 @@ module.exports.updateRequest = async (req, res) => {
         }
 
         // Update amount received status
-        if (amount_received !== undefined) {
-            updateData.amount_received = amount_received;
+        if (amount_paid !== undefined) {
+            updateData.amount_paid = amount_paid;
         }
 
-        // Update received amount (adds to total)
-        if (received_amount !== undefined) {
-            const received = parseFloat(received_amount);
-            if (isNaN(received) || received < 0) {
+        // Update amount paid (adds to total)
+        if (amount_paid !== undefined) {
+            const amount = parseFloat(amount_paid);
+            if (isNaN(amount) || amount < 0) {
                 return res.status(STATUS.VALIDATION_FAILED).json({
-                    message: 'Invalid received amount',
-                    field: 'received_amount'
+                    message: 'Invalid amount paid',
+                    field: 'amount_paid'
                 });
             }
-            updateData.received_amount = received;
-            // Add to total received amount
-            updateData.total_received_amount = (request.total_received_amount || 0) + received;
+            updateData.amount_paid = amount;
+            // Add to total amount paid
+            updateData.total_amount_paid = (request.total_amount_paid || 0) + amount;
         }
 
         // Update remarks

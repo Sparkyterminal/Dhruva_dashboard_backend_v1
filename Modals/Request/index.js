@@ -43,16 +43,16 @@ const requestSchema = new Schema(
             enum: ['PENDING', 'APPROVED', 'REJECTED', 'COMPLETED'],
             default: 'PENDING'
         },
-        amount_received: {
+        amount_paid: {
             type: Boolean,
             default: false
         },
-        received_amount: {
+        amount_paid: {
             type: Number,
             default: 0,
             min: 0
         },
-        total_received_amount: {
+        total_amount_paid: {
             type: Number,
             default: 0,
             min: 0
