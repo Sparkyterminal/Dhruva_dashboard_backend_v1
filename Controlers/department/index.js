@@ -64,14 +64,14 @@ module.exports.createDepartment = async (req, res) => {
             });
         }
         catch(error) {
-            //console.log(error);
+            console.log(error);
             return res.status(STATUS.INTERNAL_SERVER_ERROR).json({
                 message: MESSAGE.internalServerError,
             });
         }
     } 
     catch (error) {
-        //console.log(error);
+        console.log(error);
         return res.status(STATUS.INTERNAL_SERVER_ERROR).json({
             message: MESSAGE.internalServerError,
         });
