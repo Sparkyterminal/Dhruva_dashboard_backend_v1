@@ -27,11 +27,25 @@ module.exports.createUser = async (req, res) => {
     if (!errors.isEmpty()) {
         return res.status(STATUS.BAD_REQUEST).json({
             message: 'Bad request',
+            errors: errors.array()
         });
     }
 
     const token = req.get('Authorization');
-    let decodedToken = await jwt.decode(token);
+    if (!token) {
+        return res.status(STATUS.UNAUTHORISED).json({
+            message: 'Authorization token is required',
+        });
+    }
+
+    let decodedToken;
+    try {
+        decodedToken = await jwt.decode(token);
+    } catch (error) {
+        return res.status(STATUS.UNAUTHORISED).json({
+            message: 'Invalid token',
+        });
+    }
 
     // Only ADMIN can create users
     if (decodedToken.role !== 'ADMIN') {
@@ -51,40 +65,122 @@ module.exports.createUser = async (req, res) => {
         department
     } = req.body;
 
-    // Input Validations
-    const isFirstNameValid = await validations.validateName(first_name);
-    const isLastNameValid = await validations.validateName(last_name);
-    const isPasswordValid = await validations.validatePassword(password);
-    const isPhoneNumberValid = await validations.validatePhoneNumber(phone_data.phone_number);
-    const isEmailValid = email_data && email_data.email_id ? await validations.validateEmailID(email_data.email_id) : { status: true };
-
-    if (
-        !isFirstNameValid.status ||
-        !isLastNameValid.status ||
-        !email_data ||
-        !email_data.email_id ||
-        !role ||
-        !isPasswordValid.status ||
-        !isPhoneNumberValid.status
-    ) {
+    // ========== INPUT VALIDATION ==========
+    
+    // Validate first name
+    if (!first_name || typeof first_name !== 'string' || first_name.trim().length === 0) {
         return res.status(STATUS.VALIDATION_FAILED).json({
-            message: 'Invalid Inputs',
-            fields: {
-                firstName: !isFirstNameValid.status ? 'Invalid' : 'Valid',
-                lastName: !isLastNameValid.status ? 'Invalid' : 'Valid',
-                email: !isEmailValid.status ? 'Invalid' : 'Valid',
-                password: !isPasswordValid.status ? 'Invalid' : 'Valid',
-                phone: !isPhoneNumberValid.status ? 'Invalid' : 'Valid'
+            message: 'First name is required',
+            field: 'first_name'
+        });
+    }
+
+    // Validate last name
+    if (!last_name || typeof last_name !== 'string' || last_name.trim().length === 0) {
+        return res.status(STATUS.VALIDATION_FAILED).json({
+            message: 'Last name is required',
+            field: 'last_name'
+        });
+    }
+
+    // Validate email
+    if (!email_data || !email_data.email_id) {
+        return res.status(STATUS.VALIDATION_FAILED).json({
+            message: 'Email is required',
+            field: 'email_data.email_id'
+        });
+    }
+
+    const isEmailValid = await validations.validateEmailID(email_data.email_id);
+    if (!isEmailValid.status) {
+        return res.status(STATUS.VALIDATION_FAILED).json({
+            message: 'Invalid email format',
+            field: 'email_data.email_id'
+        });
+    }
+
+    // Validate password
+    if (!password || typeof password !== 'string') {
+        return res.status(STATUS.VALIDATION_FAILED).json({
+            message: 'Password is required',
+            field: 'password'
+        });
+    }
+
+    const isPasswordValid = await validations.validatePassword(password);
+    if (!isPasswordValid.status) {
+        return res.status(STATUS.VALIDATION_FAILED).json({
+            message: 'Password does not meet requirements',
+            field: 'password',
+            requirements: {
+                minLength: 'At least 8 characters',
+                uppercase: 'At least one uppercase letter',
+                lowercase: 'At least one lowercase letter',
+                digit: 'At least one number',
+                specialChar: 'At least one special character (#?!@$%^&*-)'
             }
         });
     }
 
+    // Validate phone number
+    if (!phone_data || !phone_data.phone_number) {
+        return res.status(STATUS.VALIDATION_FAILED).json({
+            message: 'Phone number is required',
+            field: 'phone_data.phone_number'
+        });
+    }
+
+    const isPhoneNumberValid = await validations.validatePhoneNumber(phone_data.phone_number);
+    if (!isPhoneNumberValid.status) {
+        return res.status(STATUS.VALIDATION_FAILED).json({
+            message: 'Invalid phone number format (must be 10 digits starting with 6-9)',
+            field: 'phone_data.phone_number'
+        });
+    }
+
+    // Validate role
+    if (!role || !['ADMIN', 'DEPARTMENT', 'OWNER'].includes(role)) {
+        return res.status(STATUS.VALIDATION_FAILED).json({
+            message: 'Invalid role. Must be one of: ADMIN, DEPARTMENT, OWNER',
+            field: 'role'
+        });
+    }
+
+    // Validate name format
+    const isFirstNameValid = await validations.validateName(first_name);
+    if (!isFirstNameValid.status) {
+        return res.status(STATUS.VALIDATION_FAILED).json({
+            message: 'First name should contain only letters and spaces',
+            field: 'first_name'
+        });
+    }
+
+    const isLastNameValid = await validations.validateName(last_name);
+    if (!isLastNameValid.status) {
+        return res.status(STATUS.VALIDATION_FAILED).json({
+            message: 'Last name should contain only letters and spaces',
+            field: 'last_name'
+        });
+    }
+
+    // ========== ROLE-SPECIFIC VALIDATION ==========
+    
+    // For DEPARTMENT role, department is required
+    if (role === 'DEPARTMENT') {
+        if (!department) {
+            return res.status(STATUS.VALIDATION_FAILED).json({
+                message: 'Department is required for DEPARTMENT role',
+                field: 'department'
+            });
+        }
+    }
+
     try {
         // Check for duplicate email
-        const existingUserByEmail = await User.findOne({ 'email_data.email_id': email_data.email_id });
+        const existingUserByEmail = await User.findOne({ 'email_data.email_id': email_data.email_id.toLowerCase() });
         if (existingUserByEmail) {
             return res.status(STATUS.FORBIDDEN).json({
-                message: 'Email already exists',
+                message: 'Email already exists in the system',
             });
         }
 
@@ -92,11 +188,47 @@ module.exports.createUser = async (req, res) => {
         const existingUserByPhone = await User.findOne({ 'phone_data.phone_number': phone_data.phone_number });
         if (existingUserByPhone) {
             return res.status(STATUS.FORBIDDEN).json({
-                message: 'Phone number already exists',
+                message: 'Phone number already exists in the system',
             });
         }
 
-        // Encrypt email
+        // ========== VALIDATE DEPARTMENTS ==========
+        const Department = require("../../Modals/Department");
+        let departments = [];
+        
+        if (department) {
+            if (Array.isArray(department)) {
+                departments = department;
+            } else if (typeof department === 'string') {
+                departments = department.split(',').map(d => d.trim()).filter(d => d);
+            }
+
+            // Validate that all department IDs exist
+            if (departments.length > 0) {
+                try {
+                    const existingDepartments = await Department.find({
+                        _id: { $in: departments },
+                        is_archived: false,
+                        is_active: true
+                    });
+
+                    if (existingDepartments.length !== departments.length) {
+                        return res.status(STATUS.VALIDATION_FAILED).json({
+                            message: 'One or more department IDs are invalid or inactive',
+                            field: 'department'
+                        });
+                    }
+                } catch (error) {
+                    console.error('Error validating departments:', error);
+                    return res.status(STATUS.INTERNAL_SERVER_ERROR).json({
+                        message: 'Error validating departments',
+                    });
+                }
+            }
+        }
+
+        // ========== ENCRYPT SENSITIVE DATA ==========
+        
         let encryptedEmail;
         try {
             encryptedEmail = encryptAES(email_data.email_id.toLowerCase());
@@ -104,62 +236,81 @@ module.exports.createUser = async (req, res) => {
             console.error('Email encryption failed:', error);
             return res.status(STATUS.INTERNAL_SERVER_ERROR).json({
                 message: 'Failed to encrypt email',
-                error,
             });
         }
 
-        // Hash password
-        const hashedPassword = await bcrypt.hash(password, 12);
-
-        // Prepare departments array
-        let departments = [];
-        if (department && Array.isArray(department)) {
-            departments = department;
-        } else if (department && typeof department === 'string') {
-            departments = department.split(',');
+        // ========== HASH PASSWORD ==========
+        
+        let hashedPassword;
+        try {
+            hashedPassword = await bcrypt.hash(password, 12);
+        } catch (error) {
+            console.error('Password hashing failed:', error);
+            return res.status(STATUS.INTERNAL_SERVER_ERROR).json({
+                message: 'Failed to hash password',
+            });
         }
 
-        // Build the user document
-        const user = new User({
-            first_name: first_name.toLowerCase(),
-            last_name: last_name.toLowerCase(),
+        // ========== BUILD USER DOCUMENT ==========
+        
+        const userData = {
+            first_name: first_name.toLowerCase().trim(),
+            last_name: last_name.toLowerCase().trim(),
             email_data: {
-                email_id: email_data.email_id.toLowerCase(),
+                email_id: email_data.email_id.toLowerCase().trim(),
                 temp_email_id: encryptedEmail,
                 is_validated: true,
             },
             phone_data: {
-                phone_number: phone_data.phone_number,
+                phone_number: phone_data.phone_number.trim(),
                 is_validated: true,
             },
             password: hashedPassword,
             role: role,
-            designation: designation || '',
+            designation: designation ? designation.trim() : '',
             department: {
                 has_department: departments.length > 0,
-                department: departments.length > 0 ? departments : []
+                department: departments
             }
-        });
+        };
 
-        // Save and respond
+        // ========== SAVE USER ==========
+        
+        const user = new User(userData);
+
         try {
             const savedUser = await user.save();
+            
             return res.status(STATUS.CREATED).json({
-                message: 'User Created Successfully',
-                id: savedUser.id
+                message: 'User created successfully',
+                data: {
+                    id: savedUser.id,
+                    first_name: savedUser.first_name,
+                    last_name: savedUser.last_name,
+                    role: savedUser.role
+                }
             });
         } catch (error) {
             console.error('Failed to save user:', error);
+            
+            // Handle duplicate key errors
+            if (error.code === 11000) {
+                const field = Object.keys(error.keyPattern)[0];
+                return res.status(STATUS.FORBIDDEN).json({
+                    message: `${field} already exists in the system`,
+                });
+            }
+            
             return res.status(STATUS.BAD_REQUEST).json({
                 message: MESSAGE.badRequest,
-                error,
+                error: error.message,
             });
         }
     } catch (error) {
-        console.error('Error creating user:', error);
+        console.error('Error in createUser controller:', error);
         return res.status(STATUS.INTERNAL_SERVER_ERROR).json({
             message: MESSAGE.internalServerError,
-            error,
+            error: error.message,
         });
     }
 };
@@ -329,7 +480,20 @@ module.exports.updateUser = async (req, res) => {
     }
 
     const token = req.get('Authorization');
-    let decodedToken = await jwt.decode(token);
+    if (!token) {
+        return res.status(STATUS.UNAUTHORISED).json({
+            message: 'Authorization token is required',
+        });
+    }
+
+    let decodedToken;
+    try {
+        decodedToken = await jwt.decode(token);
+    } catch (error) {
+        return res.status(STATUS.UNAUTHORISED).json({
+            message: 'Invalid token',
+        });
+    }
 
     if (decodedToken.role !== 'ADMIN') {
         return res.status(STATUS.UNAUTHORISED).json({
@@ -341,31 +505,136 @@ module.exports.updateUser = async (req, res) => {
         let { id } = req.params;
         let { first_name, last_name, email_data, phone_data, role, designation, department } = req.body;
 
+        // Check if user exists
+        const existingUser = await User.findById(id);
+        if (!existingUser) {
+            return res.status(STATUS.NOT_FOUND).json({
+                message: 'User not found',
+            });
+        }
+
         // Build update data
         const updateData = {};
 
-        if (first_name) updateData.first_name = first_name.toLowerCase();
-        if (last_name) updateData.last_name = last_name.toLowerCase();
-        if (role) updateData.role = role;
-        if (designation) updateData.designation = designation;
+        if (first_name) {
+            if (typeof first_name === 'string' && first_name.trim().length > 0) {
+                const isNameValid = await validations.validateName(first_name);
+                if (!isNameValid.status) {
+                    return res.status(STATUS.VALIDATION_FAILED).json({
+                        message: 'First name should contain only letters and spaces',
+                        field: 'first_name'
+                    });
+                }
+                updateData.first_name = first_name.toLowerCase().trim();
+            }
+        }
 
+        if (last_name) {
+            if (typeof last_name === 'string' && last_name.trim().length > 0) {
+                const isNameValid = await validations.validateName(last_name);
+                if (!isNameValid.status) {
+                    return res.status(STATUS.VALIDATION_FAILED).json({
+                        message: 'Last name should contain only letters and spaces',
+                        field: 'last_name'
+                    });
+                }
+                updateData.last_name = last_name.toLowerCase().trim();
+            }
+        }
+
+        if (role) {
+            if (!['ADMIN', 'DEPARTMENT', 'OWNER'].includes(role)) {
+                return res.status(STATUS.VALIDATION_FAILED).json({
+                    message: 'Invalid role. Must be one of: ADMIN, DEPARTMENT, OWNER',
+                    field: 'role'
+                });
+            }
+            updateData.role = role;
+        }
+
+        if (designation) {
+            updateData.designation = designation.trim();
+        }
+
+        // Validate and update email
         if (email_data && email_data.email_id) {
-            updateData['email_data.email_id'] = email_data.email_id.toLowerCase();
+            const isEmailValid = await validations.validateEmailID(email_data.email_id);
+            if (!isEmailValid.status) {
+                return res.status(STATUS.VALIDATION_FAILED).json({
+                    message: 'Invalid email format',
+                    field: 'email_data.email_id'
+                });
+            }
+
+            // Check if email is already taken by another user
+            const userWithEmail = await User.findOne({ 
+                'email_data.email_id': email_data.email_id.toLowerCase(),
+                _id: { $ne: id }
+            });
+            
+            if (userWithEmail) {
+                return res.status(STATUS.FORBIDDEN).json({
+                    message: 'Email already exists',
+                });
+            }
+
+            updateData['email_data.email_id'] = email_data.email_id.toLowerCase().trim();
             let encryptedEmail = encryptAES(email_data.email_id.toLowerCase());
             updateData['email_data.temp_email_id'] = encryptedEmail;
         }
 
+        // Validate and update phone
         if (phone_data && phone_data.phone_number) {
-            updateData['phone_data.phone_number'] = phone_data.phone_number;
+            const isPhoneValid = await validations.validatePhoneNumber(phone_data.phone_number);
+            if (!isPhoneValid.status) {
+                return res.status(STATUS.VALIDATION_FAILED).json({
+                    message: 'Invalid phone number format',
+                    field: 'phone_data.phone_number'
+                });
+            }
+
+            // Check if phone is already taken by another user
+            const userWithPhone = await User.findOne({ 
+                'phone_data.phone_number': phone_data.phone_number,
+                _id: { $ne: id }
+            });
+            
+            if (userWithPhone) {
+                return res.status(STATUS.FORBIDDEN).json({
+                    message: 'Phone number already exists',
+                });
+            }
+
+            updateData['phone_data.phone_number'] = phone_data.phone_number.trim();
         }
 
+        // Validate and update departments
         if (department !== undefined) {
+            const Department = require("../../Modals/Department");
             let departments = [];
+            
             if (Array.isArray(department)) {
                 departments = department;
             } else if (typeof department === 'string') {
-                departments = department.split(',');
+                departments = department.split(',').map(d => d.trim()).filter(d => d);
             }
+
+            // Validate that all department IDs exist
+            if (departments.length > 0) {
+                const existingDepartments = await Department.find({
+                    _id: { $in: departments },
+                    is_archived: false,
+                    is_active: true
+                });
+
+                if (existingDepartments.length !== departments.length) {
+                    return res.status(STATUS.VALIDATION_FAILED).json({
+                        message: 'One or more department IDs are invalid or inactive',
+                        field: 'department'
+                    });
+                }
+            }
+
             updateData['department.has_department'] = departments.length > 0;
             updateData['department.department'] = departments;
         }
@@ -379,13 +648,22 @@ module.exports.updateUser = async (req, res) => {
         } else {
             return res.status(STATUS.SUCCESS).json({
                 id: user.id,
-                message: "User Updated"
+                message: "User Updated Successfully"
             });
         }
     } catch (error) {
-        console.error(error);
+        console.error('Error updating user:', error);
+        
+        // Handle duplicate key errors
+        if (error.code === 11000) {
+            return res.status(STATUS.FORBIDDEN).json({
+                message: 'Duplicate key error',
+            });
+        }
+        
         return res.status(STATUS.INTERNAL_SERVER_ERROR).json({
             message: MESSAGE.internalServerError,
+            error: error.message,
         });
     }
 };
