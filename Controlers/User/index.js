@@ -180,95 +180,84 @@ module.exports.registerUserWithoutToken = async (req, res) => {
 //     }
 // };
 
-
-module.exports.loginUsingEmail = async (req, res) => {
+module.exports.loginUsingEmail = async (req,res) => {
     const errors = validationResult(req);
+  
     if (!errors.isEmpty()) {
-        return res.status(STATUS.BAD_REQUEST).json({
-            message: "Bad request",
-        });
+      return res.status(STATUS.BAD_REQUEST).json({
+        message: `Bad request`,
+      });
     }
-
+  
     const email_id = req.body.email_id.toLowerCase();
     const password = req.body.password;
-
+  
     try {
-        // Find ANY user by email, regardless of role
-        let user = await User.findOne({ 'email_data.email_id': email_id });
+      let user = await User.findOne({ "email_data.temp_email_id": email_id });
 
-        if (!user) {
-            // Not found
-            return res.status(STATUS.NOT_FOUND).json({
-                message: "User not found",
-            });
-        }
 
-        // Log found user and their role for debugging
-        console.log(`Login attempt for email: ${email_id}, role: ${user.role}`);
+  
+      if (!user) {
+        return res.status(STATUS.NOT_FOUND).json({
+          message: "User not found",
+        });
+      } else {
+        let loadedUser = user;
 
-        // Check activation status
-        if (!user.is_active) {
-            return res.status(STATUS.UNAUTHORISED).json({
-                message: "Your account has been deactivated",
-            });
-        }
-
-        if (user.is_archived) {
-            return res.status(STATUS.UNAUTHORISED).json({
-                message: "Your account has been archived",
-            });
-        }
-
-        // Password check
-        let isValidPassword = await bcrypt.compare(password, user.password);
-
-        if (!isValidPassword) {
-            return res.status(STATUS.UNAUTHORISED).json({
-                message: "Invalid password",
-            });
-        }
-
-        // Optionally: restrict which roles can log in
-        // Example: if you only want department users to log in, uncomment:
-        // if (!["ADMIN", "DEPARTMENT", "OWNER"].includes(user.role)) {
-        //     return res.status(STATUS.UNAUTHORISED).json({ message: "Role not permitted to log in." });
+        // if(loadedUser.role === "TNO"){
+        //   return res.status(STATUS.BAD_REQUEST).json({
+        //     message: "Login using KGID",
+        //   });
         // }
-
-        // JWT Token
-        const accessToken = jwt.sign(
-            { uid: user.id, role: user.role },
-            JWT_SECRET,   // Keep your JWT_SECRET strong & secure
+  
+        let isValidPassword = await bcrypt.compare(password, user.password);
+  
+        if (!isValidPassword) {
+          res.status(STATUS.UNAUTHORISED).json({
+            message: "Invalid password",
+          });
+        } else {
+          const accessToken = jwt.sign(
+            {
+              uid: loadedUser.id,
+              role: loadedUser.role,
+            },
+            JWT_SECRET,
             { expiresIn: TOKEN_VALIDITY }
-        );
-        const refreshToken = jwt.sign(
-            { uid: user.id, role: user.role },
+          );
+  
+          const refreshToken = jwt.sign(
+            {
+              uid: loadedUser.id,
+              role: loadedUser.role,
+            },
             JWT_SECRET,
             { expiresIn: TOKEN_MAX_VALIDITY }
-        );
-
-        // Compose response data
-        const response_data = {
+          );
+  
+          const response_data = {
             access_token: accessToken,
             refresh_token: refreshToken,
-            user_id: user.id,
-            name: `${user.first_name} ${user.last_name}`,
-            email_id: user.email_data.email_id,
-            role: user.role,
-            designation: user.designation,
-            is_active: user.is_active
-        };
-
-        return res.status(STATUS.SUCCESS).json({
-            message: "Login Successful",
+            user_id: loadedUser.id,
+            name: `${loadedUser.first_name} ${loadedUser.last_name}`,
+            // k_name: `${loadedUser.first_k_name} ${loadedUser.last_k_name}`,
+            email_id: loadedUser.email_data.temp_email_id,
+            role: loadedUser.role,
+            // is_dis: loadedUser.is_dis,
+          };
+  
+          return res.status(STATUS.SUCCESS).json({
+            message: "Login Successfull",
             data: response_data,
-        });
-
+          });
+        }
+      }
     } catch (error) {
-        console.log('Login error:', error);
-        return res.status(STATUS.INTERNAL_SERVER_ERROR).json({
-            message: MESSAGE.internalServerError,
-            error: error.message,
-        });
+      //console.log(error);
+      return res.status(STATUS.INTERNAL_SERVER_ERROR).json({
+        message: MESSAGE.internalServerError,
+        error,
+      });
     }
 };
 
