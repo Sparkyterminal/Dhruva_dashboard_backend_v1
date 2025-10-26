@@ -113,12 +113,6 @@ module.exports.registerUserWithoutToken = async (req, res) => {
         });
       } else {
         let loadedUser = user;
-
-        if(loadedUser.role === "TNO"){
-          return res.status(STATUS.BAD_REQUEST).json({
-            message: "Login using KGID",
-          });
-        }
   
         let isValidPassword = await bcrypt.compare(password, user.password);
   
@@ -163,7 +157,7 @@ module.exports.registerUserWithoutToken = async (req, res) => {
         }
       }
     } catch (error) {
-      //console.log(error);
+      console.log(error);
       return res.status(STATUS.INTERNAL_SERVER_ERROR).json({
         message: MESSAGE.internalServerError,
         error,
