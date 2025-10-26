@@ -38,7 +38,7 @@ module.exports.createDepartment = async (req, res) => {
 
     const department = new Department({
         name: req.body.name,
-        k_name: req.body.k_name,
+        // k_name: req.body.k_name,
         department_id: entity_count + 1
     });
 
