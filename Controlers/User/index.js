@@ -193,7 +193,7 @@ module.exports.loginUsingEmail = async (req,res) => {
     const password = req.body.password;
   
     try {
-      let user = await User.findOne({ "email_data.temp_email_id": email_id });
+      let user = await User.findOne({ "email_data.temp_email_id": email_id }) || User.findOne({ 'email_data.email_id': email_id });
 
 
   
