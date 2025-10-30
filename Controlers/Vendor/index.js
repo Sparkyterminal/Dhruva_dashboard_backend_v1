@@ -4,6 +4,7 @@ const jwt = require('jsonwebtoken');
 const STATUS = require("../../utils/statusCodes");
 const MESSAGE = require("../../utils/messages");
 const { validationResult } = require("express-validator");
+const User = require('../../Modals/User');
 
 // Create vendor
 exports.createVendor = async (req, res) => {
@@ -133,8 +134,25 @@ exports.createVendor = async (req, res) => {
 // Get all vendors for logged-in user
 exports.getVendors = async (req, res) => {
     try {
-        const userId = req.user._id;
-        const vendors = await Vendor.find({ vendor_belongs_to: userId }).sort({ createdAt: -1 });
+        const userId = req.userId; // logged-in user ID from auth middleware
+        const { departmentId } = req.query;
+
+        let userFilter = { _id: userId };
+        if (departmentId) {
+            userFilter = {
+                'department.department': departmentId,
+                'department.has_department': true,
+                is_active: true,
+                is_archived: false
+            };
+        }
+
+        // Find users who belong to the department (or just the logged-in user if no departmentId)
+        const users = await User.find(userFilter).select('_id');
+        const userIds = users.map(u => u._id);
+
+        // Fetch vendors belonging to the filtered users
+        const vendors = await Vendor.find({ vendor_belongs_to: { $in: userIds } }).sort({ createdAt: -1 });
 
         res.json({ success: true, vendors });
     } catch (error) {
