@@ -17,7 +17,7 @@ exports.createVendor = async (req, res) => {
     }
     const token = req.get('Authorization');
     let decodedToken = await jwt.decode(token)
-    if (decodedToken.role !== 'ADMIN' && decodedToken.role !== 'OWNER') {
+    if (decodedToken.role !== 'ADMIN' && decodedToken.role !== 'OWNER' && decodedToken.role !== 'ACCOUNTS' && decodedToken.role !== 'MARKETING' && decodedToken.role !== 'APPROVER'&& decodedToken.role !== 'DEPARTMENT') {
         return res.status(STATUS.UNAUTHORISED).json({
             message: MESSAGE.unauthorized,
         });
