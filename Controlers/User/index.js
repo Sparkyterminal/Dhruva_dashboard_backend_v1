@@ -8,6 +8,7 @@ const { validationResult } = require("express-validator");
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcrypt');
 const crypto = require('crypto');
+const Department = require("../../Modals/Department");
 
 // AES encryption function
 const encryptAES = (text) => {
@@ -131,6 +132,14 @@ module.exports.loginUsingEmail = async (req, res) => {
                 message: "Your account has been archived",
             });
         }
+        let departments = [];
+        if (user.department?.has_department && Array.isArray(user.department.department) && user.department.department.length > 0) {
+            departments = await Department.find({
+                _id: { $in: user.department.department },
+                is_archived: false,
+                is_active: true
+            }).select('_id name description'); // Select relevant fields
+        }
 
         let isValidPassword = await bcrypt.compare(password, user.password);
 
@@ -165,7 +174,8 @@ module.exports.loginUsingEmail = async (req, res) => {
             email_id: user.email_data.email_id,
             role: user.role,
             designation: user.designation,
-            is_active: user.is_active
+            is_active: user.is_active,
+            departments:departments
         };
 
         return res.status(STATUS.SUCCESS).json({
