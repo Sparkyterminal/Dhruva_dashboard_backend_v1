@@ -5,6 +5,7 @@ const STATUS = require("../../utils/statusCodes");
 const MESSAGE = require("../../utils/messages");
 const { validationResult } = require("express-validator");
 const User = require('../../Modals/User');
+const mongoose = require('mongoose');
 
 // Create vendor
 exports.createVendor = async (req, res) => {
@@ -232,6 +233,7 @@ exports.getVendorsByDepartmentId = async (req, res) => {
         return res.status(STATUS.INTERNAL_SERVER_ERROR).json({ error: error.message });
     }
 }
+
 exports.deleteVendor = async (req, res) => {
     try {
         const userId = req.user._id;
