@@ -69,6 +69,7 @@ const vendorSchema = new Schema(
         vendor_status: {
             type: String,
             enum: ['ACTIVE', 'INACTIVE'],
+            default: 'ACTIVE',
             required: true
         },
        gst_number: {
