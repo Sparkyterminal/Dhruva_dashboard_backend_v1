@@ -139,7 +139,6 @@ module.exports.loginUsingEmail = async (req, res) => {
                 message: "Invalid password",
             });
         }
-
         const accessToken = jwt.sign(
             {
                 uid: user.id,
@@ -369,9 +368,9 @@ module.exports.createUser = async (req, res) => {
     }
 
     // Validate role
-    if (!role || !['ADMIN', 'DEPARTMENT', 'OWNER'].includes(role)) {
+    if (!role || !['ADMIN', 'DEPARTMENT', 'OWNER','ACCOUNTS',"MARKETING",'APPROVER'].includes(role)) {
         return res.status(STATUS.VALIDATION_FAILED).json({
-            message: 'Invalid role. Must be one of: ADMIN, DEPARTMENT, OWNER',
+            message: 'Invalid role. Must be one of: ADMIN, DEPARTMENT, OWNER, ACCOUNTS, MARKETING, APPROVER',
             field: 'role'
         });
     }
@@ -773,9 +772,9 @@ module.exports.updateUser = async (req, res) => {
 
         // Validate and update role
         if (role !== undefined) {
-            if (!['ADMIN', 'DEPARTMENT', 'OWNER'].includes(role)) {
+            if (!['ADMIN', 'DEPARTMENT', 'OWNER','ACCOUNTS',"MARKETING",'APPROVER'].includes(role)) {
                 return res.status(STATUS.VALIDATION_FAILED).json({
-                    message: 'Invalid role. Must be one of: ADMIN, DEPARTMENT, OWNER',
+                    message: 'Invalid role. Must be one of: ADMIN, DEPARTMENT, OWNER, ACCOUNTS, MARKETING, APPROVER ',
                     field: 'role'
                 });
             }

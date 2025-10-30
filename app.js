@@ -52,11 +52,14 @@ const departmentRoutes = require("./Routes/department");
 const userRoutes = require("./Routes/User");
 const counterRoutes = require("./Routes/counter");
 const requestRoutes = require("./Routes/request");
+const vendorRoutes = require("./Routes/Vendor");
+
 
 app.use(`${API_ROOT}department`, departmentRoutes);
 app.use(`${API_ROOT}user`, userRoutes);
 app.use(`${API_ROOT}counter`, counterRoutes);
 app.use(`${API_ROOT}request`, requestRoutes);
+app.use(`${API_ROOT}vendor`, vendorRoutes);
 
 
 
