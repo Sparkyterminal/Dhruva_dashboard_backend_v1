@@ -325,13 +325,22 @@ module.exports.updateRequest = async (req, res) => {
             }
             updateData.status = status;
 
-            if (status === 'COMPLETED') {
+            // Set approval status strings based on user role and status
+            if (status === 'COMPLETED' || status === 'APPROVED') {
                 if (decodedToken.role === 'DEPARTMENT') {
-                    updateData.accounts_check = true;
+                    updateData.accounts_check = 'APPROVED';
                 } else if (decodedToken.role === 'OWNER') {
-                    updateData.owner_check = true;
+                    updateData.owner_check = 'APPROVED';
                 } else if (decodedToken.role === 'APPROVER') {
-                    updateData.approver_check = true;
+                    updateData.approver_check = 'APPROVED';
+                }
+            } else if (status === 'REJECTED') {
+                if (decodedToken.role === 'DEPARTMENT') {
+                    updateData.accounts_check = 'REJECTED';
+                } else if (decodedToken.role === 'OWNER') {
+                    updateData.owner_check = 'REJECTED';
+                } else if (decodedToken.role === 'APPROVER') {
+                    updateData.approver_check = 'REJECTED';
                 }
             }
         }
@@ -397,7 +406,7 @@ module.exports.updateRequest = async (req, res) => {
             error: error.message,
         });
     }
-}
+};
 
 // module.exports.updateRequest = async (req, res) => {
 //     const token = req.get('Authorization');
