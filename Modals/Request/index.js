@@ -62,6 +62,23 @@ const requestSchema = new Schema(
             default: 0,
             min: 0
         },
+        planned_amount:{
+            type: Number,
+            default: 0,
+            min: 0
+        },
+        accounts_check: {
+            type: Boolean,
+            default: false
+        },
+        approver_check: {
+            type: Boolean,
+            default: false
+        },
+        owner_check: {
+            type: Boolean,
+            default: false
+        },
         remarks: {
             type: String,
             required: false,

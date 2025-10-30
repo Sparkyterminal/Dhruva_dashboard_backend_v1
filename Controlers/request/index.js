@@ -291,8 +291,7 @@ module.exports.updateRequest = async (req, res) => {
     const token = req.get('Authorization');
     let decodedToken = await jwt.decode(token);
 
-    // Only OWNER and ADMIN can update requests
-    if (!['OWNER', 'ADMIN'].includes(decodedToken.role)) {
+    if (!['OWNER', 'DEPARTMENT', 'APPROVER'].includes(decodedToken.role)) {
         return res.status(STATUS.UNAUTHORISED).json({
             message: MESSAGE.unauthorized,
         });
@@ -303,22 +302,20 @@ module.exports.updateRequest = async (req, res) => {
         const {
             status,
             amount_paid,
+            planned_amount,
             remarks,
             is_active
         } = req.body;
 
         const request = await Request.findById(id);
-
         if (!request) {
             return res.status(STATUS.NOT_FOUND).json({
                 message: 'Request not found',
             });
         }
 
-        // Build update data object with only provided fields
         const updateData = {};
 
-        // Update status if provided
         if (status !== undefined) {
             if (!['PENDING', 'APPROVED', 'REJECTED', 'COMPLETED'].includes(status)) {
                 return res.status(STATUS.VALIDATION_FAILED).json({
@@ -327,14 +324,18 @@ module.exports.updateRequest = async (req, res) => {
                 });
             }
             updateData.status = status;
+
+            if (status === 'COMPLETED') {
+                if (decodedToken.role === 'DEPARTMENT') {
+                    updateData.accounts_check = true;
+                } else if (decodedToken.role === 'OWNER') {
+                    updateData.owner_check = true;
+                } else if (decodedToken.role === 'APPROVER') {
+                    updateData.approver_check = true;
+                }
+            }
         }
 
-        // Update amount received status
-        if (amount_paid !== undefined) {
-            updateData.amount_paid = amount_paid;
-        }
-
-        // Update amount paid (adds to total)
         if (amount_paid !== undefined) {
             const amount = parseFloat(amount_paid);
             if (isNaN(amount) || amount < 0) {
@@ -344,24 +345,30 @@ module.exports.updateRequest = async (req, res) => {
                 });
             }
             updateData.amount_paid = amount;
-            // Add to total amount paid
             updateData.total_amount_paid = (request.total_amount_paid || 0) + amount;
         }
 
-        // Update remarks
+        if (planned_amount !== undefined) {
+            const plannedAmt = parseFloat(planned_amount);
+            if (isNaN(plannedAmt) || plannedAmt < 0) {
+                return res.status(STATUS.VALIDATION_FAILED).json({
+                    message: 'Invalid planned amount',
+                    field: 'planned_amount'
+                });
+            }
+            updateData.planned_amount = plannedAmt;
+        }
+
         if (remarks !== undefined) {
             updateData.remarks = remarks.trim();
         }
 
-        // Update is_active status
         if (is_active !== undefined) {
             updateData.is_active = is_active;
         }
 
-        // Track who made the update
         updateData.handled_by = decodedToken.uid;
 
-        // If no fields to update, return early
         if (Object.keys(updateData).length === 0) {
             return res.status(STATUS.BAD_REQUEST).json({
                 message: 'No fields provided to update',
@@ -375,7 +382,6 @@ module.exports.updateRequest = async (req, res) => {
         )
             .populate('requested_by', 'id first_name last_name email_data designation')
             .populate('department', 'id name')
-            // .populate('handled_by', 'id first_name last_name')
             .populate('vendor', 'id name')
             .exec();
 
@@ -383,6 +389,7 @@ module.exports.updateRequest = async (req, res) => {
             data: updatedRequest,
             message: "Request Updated Successfully"
         });
+
     } catch (error) {
         console.error('Error updating request:', error);
         return res.status(STATUS.INTERNAL_SERVER_ERROR).json({
@@ -390,7 +397,112 @@ module.exports.updateRequest = async (req, res) => {
             error: error.message,
         });
     }
-};
+}
+
+// module.exports.updateRequest = async (req, res) => {
+//     const token = req.get('Authorization');
+//     let decodedToken = await jwt.decode(token);
+
+//     // Only OWNER and ADMIN can update requests
+//     if (!['OWNER', 'DEPARTMENT','APPROVER'].includes(decodedToken.role)) {
+//         return res.status(STATUS.UNAUTHORISED).json({
+//             message: MESSAGE.unauthorized,
+//         });
+//     }
+
+//     try {
+//         const { id } = req.params;
+//         const {
+//             status,
+//             amount_paid,
+//             remarks,
+//             is_active
+//         } = req.body;
+
+//         const request = await Request.findById(id);
+
+//         if (!request) {
+//             return res.status(STATUS.NOT_FOUND).json({
+//                 message: 'Request not found',
+//             });
+//         }
+
+//         // Build update data object with only provided fields
+//         const updateData = {};
+
+//         // Update status if provided
+//         if (status !== undefined) {
+//             if (!['PENDING', 'APPROVED', 'REJECTED', 'COMPLETED'].includes(status)) {
+//                 return res.status(STATUS.VALIDATION_FAILED).json({
+//                     message: 'Invalid status. Must be: PENDING, APPROVED, REJECTED, COMPLETED',
+//                     field: 'status'
+//                 });
+//             }
+//             updateData.status = status;
+//         }
+
+//         // Update amount received status
+//         if (amount_paid !== undefined) {
+//             updateData.amount_paid = amount_paid;
+//         }
+
+//         // Update amount paid (adds to total)
+//         if (amount_paid !== undefined) {
+//             const amount = parseFloat(amount_paid);
+//             if (isNaN(amount) || amount < 0) {
+//                 return res.status(STATUS.VALIDATION_FAILED).json({
+//                     message: 'Invalid amount paid',
+//                     field: 'amount_paid'
+//                 });
+//             }
+//             updateData.amount_paid = amount;
+//             // Add to total amount paid
+//             updateData.total_amount_paid = (request.total_amount_paid || 0) + amount;
+//         }
+
+//         // Update remarks
+//         if (remarks !== undefined) {
+//             updateData.remarks = remarks.trim();
+//         }
+
+//         // Update is_active status
+//         if (is_active !== undefined) {
+//             updateData.is_active = is_active;
+//         }
+
+//         // Track who made the update
+//         updateData.handled_by = decodedToken.uid;
+
+//         // If no fields to update, return early
+//         if (Object.keys(updateData).length === 0) {
+//             return res.status(STATUS.BAD_REQUEST).json({
+//                 message: 'No fields provided to update',
+//             });
+//         }
+
+//         const updatedRequest = await Request.findByIdAndUpdate(
+//             id,
+//             updateData,
+//             { new: true }
+//         )
+//             .populate('requested_by', 'id first_name last_name email_data designation')
+//             .populate('department', 'id name')
+//             // .populate('handled_by', 'id first_name last_name')
+//             .populate('vendor', 'id name')
+//             .exec();
+
+//         return res.status(STATUS.SUCCESS).json({
+//             data: updatedRequest,
+//             message: "Request Updated Successfully"
+//         });
+//     } catch (error) {
+//         console.error('Error updating request:', error);
+//         return res.status(STATUS.INTERNAL_SERVER_ERROR).json({
+//             message: MESSAGE.internalServerError,
+//             error: error.message,
+//         });
+//     }
+// };
 
 module.exports.archiveRequest = async (req, res) => {
     const token = req.get('Authorization');
