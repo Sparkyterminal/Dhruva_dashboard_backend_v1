@@ -47,6 +47,11 @@ const requestSchema = new Schema(
             type: Boolean,
             default: false
         },
+        transation_in: {
+            type: String,
+            enum: ['CASH','ACCOUNT'],
+            required: false,
+        },
         amount_paid: {
             type: Number,
             default: 0,
@@ -61,6 +66,11 @@ const requestSchema = new Schema(
             type: String,
             required: false,
             trim: true
+        },
+        vendor: {
+            type: ObjectId,
+            ref: 'vendor',
+            required: false
         },
         handled_by: {
             type: ObjectId,
