@@ -637,7 +637,7 @@ module.exports.getUsers = async (req, res) => {
             .skip((pageInt - 1) * sizeInt)
             .limit(sizeInt)
             .sort({ createdAt: sort })
-            .populate('department.department', '_id name') 
+            // .populate('department.department', '_id name') 
             .exec();
           
         } else {
