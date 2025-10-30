@@ -10,17 +10,14 @@ exports.createVendor = async (req, res) => {
             errors: errors.array()
         });
     }
-
-    try {
-        // Authorization: Only certain roles (e.g., ADMIN or OWNER) can create vendors
-        // Assuming req.userRole is set in auth middleware; adjust accordingly
-        if (!['ADMIN', 'OWNER'].includes(req.userRole)) {
-            return res.status(STATUS.UNAUTHORISED).json({
-                message: MESSAGE.unauthorized
-            });
-        }
-
-        const userId = req.userId; // userId set by auth middleware
+    const token = req.get('Authorization');
+    let decodedToken = await jwt.decode(token)
+    if (decodedToken.role !== 'ADMIN' && decodedToken.role !== 'OWNER') {
+        return res.status(STATUS.UNAUTHORISED).json({
+            message: MESSAGE.unauthorized,
+        });
+    }
+        const userId = decodedToken.id; // userId set by auth middleware
 
         const {
             vendor_id,
@@ -124,20 +121,7 @@ exports.createVendor = async (req, res) => {
             }
         });
 
-    } catch (error) {
-        console.error('Error in createVendor:', error);
-
-        if (error.code === 11000) {
-            return res.status(STATUS.FORBIDDEN).json({
-                message: 'Duplicate entry, vendor already exists.'
-            });
-        }
-
-        return res.status(STATUS.INTERNAL_SERVER_ERROR).json({
-            message: MESSAGE.internalServerError,
-            error: error.message
-        });
-    }
+    
 }
 
 // Get all vendors for logged-in user
