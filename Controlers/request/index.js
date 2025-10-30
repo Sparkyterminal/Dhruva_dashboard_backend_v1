@@ -132,6 +132,7 @@ module.exports.getMyRequests = async (req, res) => {
             .skip((page - 1) * size)
             .limit(size)
             .populate('department', 'id name')
+            .populate('vendor', 'id name')
             .exec();
 
         return res.status(STATUS.SUCCESS).json({
@@ -163,6 +164,7 @@ module.exports.getMyRequestById = async (req, res) => {
         })
             .populate('requested_by', 'id first_name last_name')
             .populate('department', 'id name')
+            .populate('vendor', 'id name')
             .exec();
 
         if (!request) {
@@ -223,7 +225,8 @@ module.exports.getAllRequests = async (req, res) => {
             .limit(size)
             .populate('requested_by', 'id first_name last_name email_data designation')
             .populate('department', 'id name')
-            .populate('handled_by', 'id first_name last_name')
+            // .populate('handled_by', 'id first_name last_name')
+            .populate('vendor', 'id name')
             .exec();
 
         return res.status(STATUS.SUCCESS).json({
@@ -261,7 +264,8 @@ module.exports.getRequestById = async (req, res) => {
         })
             .populate('requested_by', 'id first_name last_name email_data designation')
             .populate('department', 'id name')
-            .populate('handled_by', 'id first_name last_name')
+            // .populate('handled_by', 'id first_name last_name')
+            .populate('vendor', 'id name')
             .exec();
 
         if (!request) {
@@ -371,7 +375,8 @@ module.exports.updateRequest = async (req, res) => {
         )
             .populate('requested_by', 'id first_name last_name email_data designation')
             .populate('department', 'id name')
-            .populate('handled_by', 'id first_name last_name')
+            // .populate('handled_by', 'id first_name last_name')
+            .populate('vendor', 'id name')
             .exec();
 
         return res.status(STATUS.SUCCESS).json({
@@ -413,7 +418,12 @@ module.exports.archiveRequest = async (req, res) => {
             id,
             { is_archived: !request.is_archived },
             { new: true }
-        );
+        )
+            .populate('requested_by', 'id first_name last_name email_data designation')
+            .populate('department', 'id name')
+            // .populate('handled_by', 'id first_name last_name')
+            .populate('vendor', 'id name')
+            .exec();
 
         return res.status(STATUS.SUCCESS).json({
             id: updatedRequest.id,
