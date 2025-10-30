@@ -68,17 +68,20 @@ const requestSchema = new Schema(
             min: 0
         },
         accounts_check: {
-            type: Boolean,
-            default: false
-        },
-        approver_check: {
-            type: Boolean,
-            default: false
+            type: String,
+            enum: ['APPROVED', 'REJECTED', 'PENDING'],  
+            default: 'PENDING'
         },
         owner_check: {
-            type: Boolean,
-            default: false
+            type: String,
+            enum: ['APPROVED', 'REJECTED', 'PENDING'],
+            default: 'PENDING'
         },
+        approver_check: {
+            type: String,
+            enum: ['APPROVED', 'REJECTED', 'PENDING'],
+            default: 'PENDING'
+        },        
         remarks: {
             type: String,
             required: false,
