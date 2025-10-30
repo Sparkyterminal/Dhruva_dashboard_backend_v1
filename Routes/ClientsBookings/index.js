@@ -13,5 +13,7 @@ router.get("/:eventId", eventController.getEvent);
 
 router.get("/", eventController.getAllEvents);
 
+router.put("/:eventId/edit", eventController.editEventExceptReceivedAmount);
+
 
 module.exports = router;
