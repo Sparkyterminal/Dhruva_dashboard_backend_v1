@@ -489,17 +489,17 @@ module.exports.getThisDepartment = async (req, res) => {
         });
     }
 }
+
+
 exports.getAllDepartments = async (req, res) => {
     try {
         const departments = await Department.find({ is_active: true, is_archived: false }).sort({ name: 1 });
-
-        return res.status(STATUS.SUCCESS).json({
+        return res.status(200).json({
             success: true,
             departments
         });
     } catch (error) {
-        console.error('Error fetching departments:', error);
-        return res.status(STATUS.INTERNAL_SERVER_ERROR).json({
+        return res.status(500).json({
             success: false,
             error: error.message
         });
