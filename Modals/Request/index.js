@@ -9,10 +9,10 @@ const requestSchema = new Schema(
             required: true,
             trim: true
         },
-        due_date: {
-            type: Date,
-            required: true
-        },
+        // due_date: {
+        //     type: Date,
+        //     required: true
+        // },
         amount: {
             type: Number,
             required: true,
