@@ -197,6 +197,41 @@ exports.updateVendor = async (req, res) => {
 };
 
 // Delete vendor
+exports.getVendorsByDepartmentId = async (req, res) => {
+    try {
+        const departmentId = req.params.id;
+
+        // Validate departmentId is a valid ObjectId
+        if (!mongoose.Types.ObjectId.isValid(departmentId)) {
+            return res.status(400).json({ success: false, message: "Invalid department ID" });
+        }
+
+        // Find users who belong to the given department, active and not archived
+        const users = await User.find({
+            'department.department': departmentId,
+            'department.has_department': true,
+            is_active: true,
+            is_archived: false
+        }).select('_id');
+
+        if (!users.length) {
+            return res.status(404).json({ success: false, message: "No users found for this department" });
+        }
+
+        const userIds = users.map(u => u._id);
+
+        // Find vendors linked to these users
+        const vendors = await Vendor.find({
+            vendor_belongs_to: { $in: userIds }
+        }).sort({ createdAt: -1 });
+
+        return res.status(200).json({ success: true, vendors });
+
+    } catch (error) {
+        console.error('Error fetching vendors by department:', error);
+        return res.status(500).json({ success: false, error: error.message });
+    }
+}
 exports.deleteVendor = async (req, res) => {
     try {
         const userId = req.user._id;
