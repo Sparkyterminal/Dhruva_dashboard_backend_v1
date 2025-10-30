@@ -51,6 +51,7 @@ router.get(
     departmentController.getSimilarDepartmentsByName
 );
 
+router.get('/all', isAuth, departmentController.getAllDepartments);
 router.get(
     "/active",
     isAuth,
@@ -68,7 +69,6 @@ router.get(
     isAuth,
     departmentController.getDepartments
 );
-router.get('/all', isAuth, departmentController.getAllDepartments);
 
 
 module.exports = router;
