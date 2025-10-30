@@ -191,7 +191,7 @@ module.exports.getAllRequests = async (req, res) => {
     let decodedToken = await jwt.decode(token);
 
     // Only OWNER and ADMIN can view all requests
-    if (!['OWNER', 'ADMIN'].includes(decodedToken.role)) {
+    if (!['OWNER', 'ADMIN','DEPARTMENT','APPROVER'].includes(decodedToken.role)) {
         return res.status(STATUS.UNAUTHORISED).json({
             message: MESSAGE.unauthorized,
         });
