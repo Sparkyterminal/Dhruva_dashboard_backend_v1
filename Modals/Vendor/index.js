@@ -16,7 +16,7 @@ const vendorSchema = new Schema(
         
         email: {
             type: String,
-            required: true
+            required: false
         },
         
         address: {
@@ -35,6 +35,10 @@ const vendorSchema = new Schema(
         },
         
         zip: {
+            type: String,
+            required: true
+        },
+        persone_name: {
             type: String,
             required: true
         },
@@ -65,15 +69,15 @@ const vendorSchema = new Schema(
         },
        gst_number: {
             type: String,
-            required: true
+            required: false
         },
         pan_number: {
             type: String,
-            required: true
+            required: false
         },
         msmed_number: {
             type: String,
-            required: true
+            required: false
         },
     
     },
