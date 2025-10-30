@@ -102,9 +102,9 @@ exports.createVendor = async (req, res) => {
             persone_name: persone_name ? persone_name.trim() : '',
             vendor_phone: vendor_phone ? vendor_phone.trim() : '',
             vendor_belongs_to: userId,
-            vendor_category,
-            vendor_type,
-            vendor_status,
+            vendor_category:vendor_category.trim(),
+            vendor_type:vendor_type.trim(),
+            vendor_status:'ACTIVE',
             gst_number: gst_number ? gst_number.trim() : '',
             pan_number: pan_number ? pan_number.trim() : '',
             msmed_number: msmed_number ? msmed_number.trim() : ''
