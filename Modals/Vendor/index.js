@@ -4,11 +4,11 @@ const ObjectId = Schema.Types.ObjectId;
 
 const vendorSchema = new Schema(
     {
-        vendor_id: {
-            type: Number,
-            required: true,
-            default: 0
-        },
+        // vendor_id: {
+        //     type: Number,
+        //     required: true,
+        //     default: 0
+        // },
         name: {
             type: String,
             required: true
