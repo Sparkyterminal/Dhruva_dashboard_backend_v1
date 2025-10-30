@@ -62,6 +62,10 @@ const vendorSchema = new Schema(
             enum: ['MATERIAL', 'LABOUR','COMPOSITE',"EXPENSES"],
             required: true
         },
+        vendor_phone: {
+            type: String,
+            required: true
+        },
         vendor_status: {
             type: String,
             enum: ['ACTIVE', 'INACTIVE'],
