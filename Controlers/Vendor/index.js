@@ -22,9 +22,9 @@ exports.createVendor = async (req, res) => {
             message: MESSAGE.unauthorized,
         });
     }
-    console.log('decodedToken',decodedToken);
-        const userId = decodedToken.id; // userId set by auth middleware
-    console.log(userId);
+    // console.log('decodedToken',decodedToken);
+        const userId = decodedToken.uid; // userId set by auth middleware
+    // console.log(userId);
         const {
             // vendor_id,
             name,
