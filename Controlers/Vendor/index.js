@@ -1,4 +1,9 @@
 const Vendor = require('../../Modals/Vendor'); 
+const validations = require("../../utils/validations");
+const jwt = require('jsonwebtoken');
+const STATUS = require("../../utils/statusCodes");
+const MESSAGE = require("../../utils/messages");
+const { validationResult } = require("express-validator");
 
 // Create vendor
 exports.createVendor = async (req, res) => {
