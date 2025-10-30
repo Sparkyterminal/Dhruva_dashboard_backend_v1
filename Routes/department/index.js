@@ -68,6 +68,7 @@ router.get(
     isAuth,
     departmentController.getDepartments
 );
+router.get('/all', isAuth, departmentController.getAllDepartments);
 
 
 module.exports = router;
