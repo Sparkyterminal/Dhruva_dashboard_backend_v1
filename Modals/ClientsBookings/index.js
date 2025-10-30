@@ -4,6 +4,7 @@ const advanceSchema = new mongoose.Schema({
   advanceNumber: { type: Number, required: true },
   expectedAmount: { type: Number, required: true },
   receivedAmount: { type: Number, default: 0 },
+  receivedDate: { type: Date },
 
   remarks: {
     accounts: { type: String, default: "" },
@@ -12,9 +13,9 @@ const advanceSchema = new mongoose.Schema({
   },
 
   updatedBy: {
-    accounts: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
-    owner: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
-    approver: { type: mongoose.Schema.Types.ObjectId, ref: "User" }
+    accounts: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
+    owner: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
+    approver: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null }
   },
 
   updatedAt: {
@@ -36,4 +37,4 @@ const eventSchema = new mongoose.Schema({
 
 const Event = mongoose.model("Event", eventSchema);
 
-module.exports = Event;     
+module.exports = Event;
