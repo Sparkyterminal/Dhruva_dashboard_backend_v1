@@ -22,10 +22,11 @@ exports.createVendor = async (req, res) => {
             message: MESSAGE.unauthorized,
         });
     }
+    console.log('decodedToken',decodedToken);
         const userId = decodedToken.id; // userId set by auth middleware
-
+    console.log(userId);
         const {
-            vendor_id,
+            // vendor_id,
             name,
             email,
             address,
@@ -91,7 +92,7 @@ exports.createVendor = async (req, res) => {
 
         // ========== Build vendor document ==========
         const vendorData = {
-            vendor_id: vendor_id || 0,
+            // vendor_id: vendor_id || 0,
             name: name.trim(),
             email: email.trim(),
             address: address ? address.trim() : '',
