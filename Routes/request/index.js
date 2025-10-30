@@ -12,6 +12,7 @@ router.post(
         body('purpose').trim().not().isEmpty(),
         // body('due_date').not().isEmpty(),
         body('amount').isNumeric().not().isEmpty(),
+        body('transation_in').isIn(['CASH','ACCOUNT']),
         body('priority').isIn(['HIGH', 'MEDIUM', 'LOW'])
     ],
     requestController.createRequest
