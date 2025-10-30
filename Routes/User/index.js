@@ -78,5 +78,12 @@ router.delete(
     userController.deleteUser
 );
 
+router.patch(
+    "/change/password",
+    isAuth,
+    [body("password").trim().not().isEmpty()],
+    userController.changeUserPassword
+  );
+
 module.exports = router;
 
