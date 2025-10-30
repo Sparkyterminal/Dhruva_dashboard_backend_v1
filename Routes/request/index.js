@@ -13,7 +13,9 @@ router.post(
         // body('due_date').not().isEmpty(),
         body('amount').isNumeric().not().isEmpty(),
         body('transation_in').isIn(['CASH','ACCOUNT']),
+        body('vendor').isMongoId(),
         body('priority').isIn(['HIGH', 'MEDIUM', 'LOW'])
+
     ],
     requestController.createRequest
 );

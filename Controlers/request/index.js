@@ -34,7 +34,8 @@ module.exports.createRequest = async (req, res) => {
             amount,
             priority,
             note,
-            transation_in
+            transation_in,
+            vendor
         } = req.body;
 
         // Validate amount
@@ -79,7 +80,8 @@ module.exports.createRequest = async (req, res) => {
             requested_by: decodedToken.uid,
             department: departmentId,
             status: 'PENDING',
-            transation_in: transation_in || 'CASH'
+            transation_in: transation_in || 'CASH',
+            vendor: vendor || null
         });
 
         const savedRequest = await request.save();
@@ -93,7 +95,8 @@ module.exports.createRequest = async (req, res) => {
                 //  due_date: savedRequest.due_date,
                 priority: savedRequest.priority,
                 status: savedRequest.status,
-                transation_in: savedRequest.transation_in
+                transation_in: savedRequest.transation_in,
+                vendor: savedRequest.vendor
             }
         });
     } catch (error) {
