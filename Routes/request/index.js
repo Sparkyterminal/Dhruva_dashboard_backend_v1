@@ -10,7 +10,7 @@ router.post(
     isAuth,
     [
         body('purpose').trim().not().isEmpty(),
-        body('due_date').not().isEmpty(),
+        // body('due_date').not().isEmpty(),
         body('amount').isNumeric().not().isEmpty(),
         body('priority').isIn(['HIGH', 'MEDIUM', 'LOW'])
     ],

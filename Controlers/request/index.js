@@ -30,7 +30,7 @@ module.exports.createRequest = async (req, res) => {
     try {
         const {
             purpose,
-            due_date,
+            // due_date,
             amount,
             priority,
             note
@@ -45,13 +45,13 @@ module.exports.createRequest = async (req, res) => {
         }
 
         // Validate due date
-        const dueDateObj = new Date(due_date);
-        if (isNaN(dueDateObj.getTime())) {
-            return res.status(STATUS.VALIDATION_FAILED).json({
-                message: 'Invalid due date format',
-                field: 'due_date'
-            });
-        }
+        // const dueDateObj = new Date(due_date);
+        // if (isNaN(dueDateObj.getTime())) {
+        //     return res.status(STATUS.VALIDATION_FAILED).json({
+        //         message: 'Invalid due date format',
+        //         field: 'due_date'
+        //     });
+        // }
 
         // Get user to fetch their department
         const User = require("../../Modals/User");
@@ -71,7 +71,7 @@ module.exports.createRequest = async (req, res) => {
 
         const request = new Request({
             purpose: purpose.trim(),
-            due_date: dueDateObj,
+            // due_date: dueDateObj,
             amount: parseFloat(amount),
             priority: priority || 'MEDIUM',
             note: note ? note.trim() : '',
@@ -88,7 +88,7 @@ module.exports.createRequest = async (req, res) => {
                 id: savedRequest.id,
                 purpose: savedRequest.purpose,
                 amount: savedRequest.amount,
-                due_date: savedRequest.due_date,
+                //  due_date: savedRequest.due_date,
                 priority: savedRequest.priority,
                 status: savedRequest.status
             }
