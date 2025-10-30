@@ -123,3 +123,49 @@ exports.getAllEvents = async (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 };
+
+// Edit event details except receivedAmount in advances
+exports.editEventExceptReceivedAmount = async (req, res) => {
+  try {
+    const { eventId } = req.params;
+    const { clientName, eventDate, venueLocation, agreedAmount, advances } = req.body;
+
+    // Validate basic fields
+    if (!clientName || !eventDate || !venueLocation || !agreedAmount || !Array.isArray(advances)) {
+      return res.status(400).json({ message: "Required fields missing or advances is not an array" });
+    }
+
+    const event = await Event.findById(eventId);
+    if (!event) return res.status(404).json({ message: "Event not found" });
+
+    // Update event base details
+    event.clientName = clientName;
+    event.eventDate = new Date(eventDate);
+    event.venueLocation = venueLocation;
+    event.agreedAmount = agreedAmount;
+
+    // Update advances without changing receivedAmount
+    event.advances = advances.map((adv) => {
+      // Find existing advance to retain receivedAmount and related fields
+      const existingAdvance = event.advances.find(a => a.advanceNumber === adv.advanceNumber);
+
+      return {
+        advanceNumber: adv.advanceNumber,
+        expectedAmount: adv.expectedAmount,
+        // Preserve existing receivedAmount, receivedDate, remarks, updatedBy, updatedAt
+        receivedAmount: existingAdvance ? existingAdvance.receivedAmount : 0,
+        receivedDate: existingAdvance ? existingAdvance.receivedDate : null,
+        remarks: existingAdvance ? existingAdvance.remarks : { accounts: "", owner: "", approver: "" },
+        updatedBy: existingAdvance ? existingAdvance.updatedBy : { accounts: null, owner: null, approver: null },
+        updatedAt: existingAdvance ? existingAdvance.updatedAt : { accounts: null, owner: null, approver: null },
+      };
+    });
+
+    await event.save();
+
+    res.status(200).json({ message: "Event updated (receivedAmount unchanged)", event });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Server error" });
+  }
+};
