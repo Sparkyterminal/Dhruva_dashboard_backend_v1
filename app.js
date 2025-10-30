@@ -54,6 +54,7 @@ const counterRoutes = require("./Routes/counter");
 const requestRoutes = require("./Routes/request");
 const vendorRoutes = require("./Routes/Vendor");
 const events = require("./Routes/ClientsBookings");
+const bills = require("./Routes/Bills");
 
 
 app.use(`${API_ROOT}department`, departmentRoutes);
@@ -62,6 +63,7 @@ app.use(`${API_ROOT}counter`, counterRoutes);
 app.use(`${API_ROOT}request`, requestRoutes);
 app.use(`${API_ROOT}vendor`, vendorRoutes);
 app.use(`${API_ROOT}events`, events);
+app.use(`${API_ROOT}bills`, bills);
 
 
 
