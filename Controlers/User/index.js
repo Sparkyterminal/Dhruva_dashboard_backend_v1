@@ -623,20 +623,21 @@ module.exports.getUsers = async (req, res) => {
 
         if (status === null) {
             documentCount = await User.countDocuments({ is_archived: false });
-            users = await User.find({ is_active: status, is_archived: false })
-                .select({
-                    id: 1,
-                    first_name: 1,
-                    last_name: 1,
-                    'email_data.email_id': 1,
-                    'phone_data.phone_number': 1,
-                    role: 1,
-                    designation: 1,
-                    is_active: 1
-                }).skip((pageInt - 1) * sizeInt)
+            users = await User.find({ is_archived: false }, {
+                id: 1,
+                first_name: 1,
+                last_name: 1,
+                'email_data.email_id': 1,
+                'phone_data.phone_number': 1,
+                role: 1,
+                designation: 1,
+                is_active: 1
+            })
+                .skip((pageInt - 1) * sizeInt)
                 .limit(sizeInt)
                 .sort({ createdAt: sort })
-                .populate('department.department', '_id name description') 
+                .populate('department.department', '_id name') 
+
                 .exec();
         } else {
             documentCount = await User.find({ is_active: status, is_archived: false }).count();
