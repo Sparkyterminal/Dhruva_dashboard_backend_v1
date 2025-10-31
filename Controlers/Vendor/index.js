@@ -164,7 +164,7 @@ exports.getVendors = async (req, res) => {
 // Get single vendor
 exports.getVendorById = async (req, res) => {
     try {
-        const userId = req.user._id;
+        const userId = req.user.id;
         const vendor = await Vendor.findOne({ _id: req.params.id, vendor_belongs_to: userId });
 
         if (!vendor) {
