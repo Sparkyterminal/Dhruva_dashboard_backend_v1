@@ -616,3 +616,37 @@ module.exports.getRequests = async (req, res) => {
         });
     }
 };
+
+
+exports.getRequestsByDepartmentId = async (req, res) => {
+    try {
+        const departmentId = req.params.id;
+
+        // Validate departmentId is a valid ObjectId
+        if (!mongoose.Types.ObjectId.isValid(departmentId)) {
+            return res.status(STATUS.BAD_REQUEST).json({ message: "Invalid department ID" });
+        }
+
+        // Find all requests with the specified department, active and not archived
+        const requests = await Request.find({
+            department: departmentId,
+            is_active: true,
+            is_archived: false
+        })
+        .sort({ createdAt: -1 })
+        .populate('requested_by', 'id first_name last_name email_data designation')
+        .populate('department', 'id name')
+        .populate('vendor', 'id name')
+        .exec();
+
+        if (!requests.length) {
+            return res.status(STATUS.NOT_FOUND).json({ message: "No requests found for this department" });
+        }
+
+        return res.status(STATUS.SUCCESS).json({ requests });
+
+    } catch (error) {
+        console.error('Error fetching requests by department:', error);
+        return res.status(STATUS.INTERNAL_SERVER_ERROR).json({ error: error.message });
+    }
+}
