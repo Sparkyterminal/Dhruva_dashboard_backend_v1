@@ -45,8 +45,10 @@ exports.createEvent = async (req, res) => {
 exports.updateAdvance = async (req, res) => {
   try {
     const { eventId, advanceNumber } = req.params;
-    const { role, receivedAmount, remarks, receivedDate, userId } = req.body;
-
+    const {  receivedAmount, remarks, receivedDate, userId } = req.body;
+    const token = req.get('Authorization');
+    let decodedToken = await jwt.decode(token);
+    const role = decodedToken.role
     // validate role
     const validRoles = ["DEPARTMENT", "OWNER", "APPROVER"];
     if (!validRoles.includes(role)) {

@@ -16,7 +16,7 @@ const billSchema = new mongoose.Schema({
     min: 0,
   }
 }, {
-  timestamps: true, // For createdAt and updatedAt fields
+  timestamps: true, 
 });
 
 const Bill = mongoose.model('Bill', billSchema);
