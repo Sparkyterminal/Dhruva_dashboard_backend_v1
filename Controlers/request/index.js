@@ -191,6 +191,7 @@ module.exports.getAllRequests = async (req, res) => {
     const token = req.get('Authorization');
     let decodedToken = await jwt.decode(token);
 
+    // Only OWNER and ADMIN can view all requests
     if (!['OWNER', 'ADMIN', 'DEPARTMENT', 'APPROVER'].includes(decodedToken.role)) {
         return res.status(STATUS.UNAUTHORISED).json({
             message: MESSAGE.unauthorized,
@@ -198,13 +199,12 @@ module.exports.getAllRequests = async (req, res) => {
     }
 
     try {
-        // ✅ take values from body if payload is sent via POST
-        const page = parseInt(req.body.page) || 1;
-        const size = parseInt(req.body.size) || 10;
-        const status = req.body.status;
-        const priority = req.body.priority;
-        const department = req.body.department;
-        const search = req.body.search?.trim(); // 👈 from body
+        const page = parseInt(req.query.page) || 1;
+        const size = parseInt(req.query.size) || 10;
+        const status = req.query.status;
+        const priority = req.query.priority;
+        const department = req.query.department;
+        const search = req.query.search?.trim(); // 👈 New search param
 
         let query = { is_archived: false };
 
@@ -212,10 +212,14 @@ module.exports.getAllRequests = async (req, res) => {
         if (priority) query.priority = priority;
         if (department) query.department = department;
 
+        // 👇 Add search filter (example: match name, email, or title)
         if (search) {
             query.$or = [
                 { title: { $regex: search, $options: 'i' } },
                 { description: { $regex: search, $options: 'i' } },
+                { 'requested_by.first_name': { $regex: search, $options: 'i' } },
+                { 'requested_by.last_name': { $regex: search, $options: 'i' } },
+                { 'requested_by.email_data': { $regex: search, $options: 'i' } }
             ];
         }
 
@@ -243,7 +247,6 @@ module.exports.getAllRequests = async (req, res) => {
         });
     }
 };
-
 
 module.exports.getRequestById = async (req, res) => {
     const token = req.get('Authorization');
