@@ -68,5 +68,7 @@ router.patch(
     requestController.archiveRequest
 );
 
+router.get('/department/:id', auth, requestController.getRequestsByDepartmentId);
+
 module.exports = router;
 
