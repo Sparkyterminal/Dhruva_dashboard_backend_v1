@@ -40,6 +40,13 @@ router.get(
     requestController.getAllRequests
 );
 
+router.get(
+    "/all",
+    isAuth,
+    requestController.getRequests
+);
+
+
 // Owner can get specific request details
 router.get(
     "/:id",

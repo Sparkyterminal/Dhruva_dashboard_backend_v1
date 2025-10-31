@@ -562,3 +562,57 @@ module.exports.archiveRequest = async (req, res) => {
     }
 };
 
+
+
+module.exports.getRequests = async (req, res) => {
+    const token = req.get('Authorization');
+    let decodedToken = await jwt.decode(token);
+
+    // Only OWNER and ADMIN can view all requests
+    if (!['OWNER', 'ADMIN', 'DEPARTMENT', 'APPROVER'].includes(decodedToken.role)) {
+        return res.status(STATUS.UNAUTHORISED).json({
+            message: MESSAGE.unauthorized,
+        });
+    }
+
+    try {
+        const status = req.query.status;
+        const priority = req.query.priority;
+        const department = req.query.department;
+
+        let query = { is_archived: false };
+
+        if (status) {
+            query.status = status;
+        }
+
+        if (priority) {
+            query.priority = priority;
+        }
+
+        if (department) {
+            query.department = department;
+        }
+
+        const documentCount = await Request.countDocuments(query);
+        const requests = await Request.find(query)
+            .sort({ createdAt: -1 })
+            // Removed skip() and limit()
+            .populate('requested_by', 'id first_name last_name email_data designation')
+            .populate('department', 'id name')
+            //.populate('handled_by', 'id first_name last_name')
+            .populate('vendor', 'id name')
+            .exec();
+
+        return res.status(STATUS.SUCCESS).json({
+            items: requests,
+            totalItems: documentCount,
+        });
+    } catch (error) {
+        console.error('Error fetching requests:', error);
+        return res.status(STATUS.INTERNAL_SERVER_ERROR).json({
+            message: MESSAGE.internalServerError,
+            error: error.message,
+        });
+    }
+};
