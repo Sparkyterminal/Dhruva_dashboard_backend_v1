@@ -204,7 +204,7 @@ module.exports.getAllRequests = async (req, res) => {
         const status = req.query.status;
         const priority = req.query.priority;
         const department = req.query.department;
-        const search = req.query.search?.trim(); // 👈 New search param
+        const search = req.query?.trim(); // 👈 New search param
 
         let query = { is_archived: false };
 
