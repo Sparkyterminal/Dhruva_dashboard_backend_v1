@@ -180,9 +180,9 @@ exports.getVendorById = async (req, res) => {
 // Update vendor
 exports.updateVendor = async (req, res) => {
     try {
-        const userId = req.user._id;
+        // const userId = req.user._id;
         const vendor = await Vendor.findOneAndUpdate(
-            { _id: req.params.id, vendor_belongs_to: userId },
+            { _id: req.params.id },
             req.body,
             { new: true, runValidators: true }
         );
