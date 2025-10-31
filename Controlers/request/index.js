@@ -192,7 +192,7 @@ module.exports.getAllRequests = async (req, res) => {
     let decodedToken = await jwt.decode(token);
 
     // Only OWNER and ADMIN can view all requests
-    if (!['OWNER', 'ADMIN','DEPARTMENT','APPROVER'].includes(decodedToken.role)) {
+    if (!['OWNER', 'ADMIN', 'DEPARTMENT', 'APPROVER'].includes(decodedToken.role)) {
         return res.status(STATUS.UNAUTHORISED).json({
             message: MESSAGE.unauthorized,
         });
@@ -204,19 +204,23 @@ module.exports.getAllRequests = async (req, res) => {
         const status = req.query.status;
         const priority = req.query.priority;
         const department = req.query.department;
+        const search = req.query.search?.trim(); // 👈 New search param
 
         let query = { is_archived: false };
 
-        if (status) {
-            query.status = status;
-        }
+        if (status) query.status = status;
+        if (priority) query.priority = priority;
+        if (department) query.department = department;
 
-        if (priority) {
-            query.priority = priority;
-        }
-
-        if (department) {
-            query.department = department;
+        // 👇 Add search filter (example: match name, email, or title)
+        if (search) {
+            query.$or = [
+                { title: { $regex: search, $options: 'i' } },
+                { description: { $regex: search, $options: 'i' } },
+                { 'requested_by.first_name': { $regex: search, $options: 'i' } },
+                { 'requested_by.last_name': { $regex: search, $options: 'i' } },
+                { 'requested_by.email_data': { $regex: search, $options: 'i' } }
+            ];
         }
 
         const documentCount = await Request.countDocuments(query);
@@ -226,7 +230,6 @@ module.exports.getAllRequests = async (req, res) => {
             .limit(size)
             .populate('requested_by', 'id first_name last_name email_data designation')
             .populate('department', 'id name')
-            // .populate('handled_by', 'id first_name last_name')
             .populate('vendor', 'id name')
             .exec();
 
@@ -234,7 +237,7 @@ module.exports.getAllRequests = async (req, res) => {
             currentPage: page,
             items: requests,
             totalItems: documentCount,
-            totalPages: Math.ceil(documentCount / size)
+            totalPages: Math.ceil(documentCount / size),
         });
     } catch (error) {
         console.error('Error fetching requests:', error);
