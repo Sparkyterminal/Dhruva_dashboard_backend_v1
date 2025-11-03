@@ -38,11 +38,14 @@
 // const Event = mongoose.model("Event", eventSchema);
 
 // module.exports = Event;
+
 const mongoose = require("mongoose");
 
 const advanceSchema = new mongoose.Schema({
   advanceNumber: { type: Number, required: true },
   expectedAmount: { type: Number, required: true },
+  advanceDate: { type: Date, required: true },  // Added advanceDate
+
   receivedAmount: { type: Number, default: 0 },
   receivedDate: { type: Date },
 
@@ -67,8 +70,8 @@ const advanceSchema = new mongoose.Schema({
 
 const eventSchema = new mongoose.Schema({
   clientName: { type: String, required: true },
-  brideName: { type: String },          // Added brideName
-  groomName: { type: String },          // Added groomName
+  brideName: { type: String },
+  groomName: { type: String },
   eventDate: { type: Date, required: true },
   venueLocation: { type: String, required: true },
   agreedAmount: { type: Number, required: true },
