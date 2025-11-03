@@ -136,7 +136,7 @@ exports.createVendor = async (req, res) => {
 exports.getVendors = async (req, res) => {
     try {
         const userId = req.userId; // logged-in user ID from auth middleware
-        const { departmentId } = req.query;
+        const { departmentId, search } = req.query; // <-- added search
 
         let userFilter = { _id: userId };
         if (departmentId) {
@@ -152,8 +152,16 @@ exports.getVendors = async (req, res) => {
         const users = await User.find(userFilter).select('_id');
         const userIds = users.map(u => u._id);
 
+        // Build vendor query
+        let vendorQuery = { vendor_belongs_to: { $in: userIds } };
+
+        // Add search
+        if (search && search.trim()) {
+            vendorQuery.name = { $regex: search.trim(), $options: 'i' }; // case-insensitive search
+        }
+
         // Fetch vendors belonging to the filtered users
-        const vendors = await Vendor.find({ vendor_belongs_to: { $in: userIds } }).sort({ createdAt: -1 });
+        const vendors = await Vendor.find(vendorQuery).sort({ createdAt: -1 });
 
         res.json({ success: true, vendors });
     } catch (error) {
@@ -247,4 +255,23 @@ exports.deleteVendor = async (req, res) => {
     } catch (error) {
         res.status(500).json({ success: false, error: error.message });
     }
+};
+
+exports.getAllVendors = async (req, res) => {
+  try {
+    const { search } = req.query;
+
+    let query = {};
+
+    // If search query is present, add regex filter on 'name'
+    if (search && search.trim()) {
+      query.name = { $regex: search.trim(), $options: 'i' };
+    }
+
+    const vendors = await Vendor.find(query).sort({ createdAt: -1 });
+
+    res.json({ success: true, vendors });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
 };
