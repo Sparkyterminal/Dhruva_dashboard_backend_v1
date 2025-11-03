@@ -113,7 +113,6 @@ const vendorSchema = new Schema(
     },
     person_category: {
       type: String,
-      enum: ['INDIVIDUAL', 'HUF', 'COMPANY', 'FIRM'],
       required: true
     },
     company_name: {
