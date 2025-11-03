@@ -112,15 +112,17 @@ const vendorSchema = new Schema(
       required: true
     },
     person_category: {
-      type: String,
-      required: true
-    },
-    company_name: {
-      type: String,
-      required: function () {
-        return this.person_category === 'COMPANY';
-      }
-    },
+        type: String,
+        required: true
+      },
+      company_name: {
+        type: String,
+        required: true
+        // required: function () {
+        //   return this.person_category === 'COMPANY';
+        // }
+      },
+      
     temp_address_1: {
       type: String,
       required: false
@@ -187,8 +189,8 @@ const vendorSchema = new Schema(
     },
     vendor_type: {
       type: String,
-      enum: ['MATERIAL', 'LABOUR', 'COMPOSITE', 'EXPENSES'],
-      required: true
+    //   enum: ['MATERIAL', 'LABOUR', 'COMPOSITE', 'EXPENSES'],
+      required: false
     },
     gst_no: {
       type: String,
