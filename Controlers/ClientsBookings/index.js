@@ -199,6 +199,7 @@ exports.createEvent = async (req, res) => {
     const advancesData = advances.map(adv => ({
       advanceNumber: adv.advanceNumber,
       expectedAmount: adv.expectedAmount,
+      advanceDate: adv.advanceDate ? new Date(adv.advanceDate) : null,  // Added advanceDate
       receivedAmount: adv.receivedAmount || 0,
       receivedDate: adv.receivedDate ? new Date(adv.receivedDate) : null,
       remarks: adv.remarks || { accounts: "", owner: "", approver: "" },
@@ -341,6 +342,7 @@ exports.editEventExceptReceivedAmount = async (req, res) => {
       return {
         advanceNumber: adv.advanceNumber,
         expectedAmount: adv.expectedAmount,
+        advanceDate: adv.advanceDate ? new Date(adv.advanceDate) : (existingAdvance ? existingAdvance.advanceDate : null), // preserve or update advanceDate
         receivedAmount: existingAdvance ? existingAdvance.receivedAmount : 0,
         receivedDate: existingAdvance ? existingAdvance.receivedDate : null,
         remarks: existingAdvance ? existingAdvance.remarks : { accounts: "", owner: "", approver: "" },
