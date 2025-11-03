@@ -352,19 +352,19 @@ exports.createVendor = async (req, res) => {
     });
   }
 
-  if (!person_category || !['INDIVIDUAL', 'HUF', 'COMPANY', 'FIRM'].includes(person_category)) {
-    return res.status(STATUS.VALIDATION_FAILED).json({
-      message: 'Invalid person_category',
-      field: 'person_category'
-    });
-  }
+//   if (!person_category .includes(person_category)) {
+//     return res.status(STATUS.VALIDATION_FAILED).json({
+//       message: 'Invalid person_category',
+//       field: 'person_category'
+//     });
+//   }
 
-  if (person_category === 'COMPANY' && (!company_name || company_name.trim().length === 0)) {
-    return res.status(STATUS.VALIDATION_FAILED).json({
-      message: 'Company name is required for company category',
-      field: 'company_name'
-    });
-  }
+//   if (person_category === 'COMPANY' && (!company_name || company_name.trim().length === 0)) {
+//     return res.status(STATUS.VALIDATION_FAILED).json({
+//       message: 'Company name is required for company category',
+//       field: 'company_name'
+//     });
+//   }
 
   if (email && typeof email === 'string' && email.trim().length > 0) {
     const isEmailValid = validations.validateEmailID ? await validations.validateEmailID(email) : true;
@@ -376,12 +376,12 @@ exports.createVendor = async (req, res) => {
     }
   }
 
-  if (!vendor_type || !['MATERIAL', 'LABOUR', 'COMPOSITE', 'EXPENSES'].includes(vendor_type)) {
-    return res.status(STATUS.VALIDATION_FAILED).json({
-      message: 'Invalid vendor type',
-      field: 'vendor_type'
-    });
-  }
+//   if (!vendor_type || !['MATERIAL', 'LABOUR', 'COMPOSITE', 'EXPENSES'].includes(vendor_type)) {
+//     return res.status(STATUS.VALIDATION_FAILED).json({
+//       message: 'Invalid vendor type',
+//       field: 'vendor_type'
+//     });
+//   }
 
   // Construct vendor object
   const vendorData = {
