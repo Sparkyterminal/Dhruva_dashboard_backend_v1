@@ -10,12 +10,10 @@ router.post(
     isAuth,
     [
         body('purpose').trim().not().isEmpty(),
-        // body('due_date').not().isEmpty(),
         body('amount').isNumeric().not().isEmpty(),
         body('transation_in').isIn(['CASH','ACCOUNT']),
-        body('vendor').isMongoId(),
+        body('vendor').optional().isMongoId(),
         body('priority').isIn(['HIGH', 'MEDIUM', 'LOW'])
-
     ],
     requestController.createRequest
 );
