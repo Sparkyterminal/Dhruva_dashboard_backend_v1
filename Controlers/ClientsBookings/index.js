@@ -289,24 +289,41 @@ exports.getEvent = async (req, res) => {
 };
 
 // Get all events with optional pagination
+// exports.getAllEvents = async (req, res) => {
+//   try {
+//     const page = parseInt(req.query.page) || 1;
+//     const limit = parseInt(req.query.limit) || 20;
+//     const skip = (page - 1) * limit;
+
+//     const events = await Event.find()
+//       .sort({ createdAt: -1 })
+//       .skip(skip)
+//       .limit(limit);
+
+//     const totalEvents = await Event.countDocuments();
+
+//     res.status(200).json({
+//       page,
+//       limit,
+//       totalEvents,
+//       totalPages: Math.ceil(totalEvents / limit),
+//       events
+//     });
+//   } catch (error) {
+//     console.error(error);
+//     res.status(500).json({ message: "Server error" });
+//   }
+// };
+
 exports.getAllEvents = async (req, res) => {
   try {
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 20;
-    const skip = (page - 1) * limit;
-
     const events = await Event.find()
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(limit);
+      .sort({ createdAt: -1 });  // latest events first
 
-    const totalEvents = await Event.countDocuments();
+    const totalEvents = events.length;
 
     res.status(200).json({
-      page,
-      limit,
       totalEvents,
-      totalPages: Math.ceil(totalEvents / limit),
       events
     });
   } catch (error) {
@@ -314,6 +331,7 @@ exports.getAllEvents = async (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 };
+
 
 // Edit event details except receivedAmount in advances
 exports.editEventExceptReceivedAmount = async (req, res) => {
