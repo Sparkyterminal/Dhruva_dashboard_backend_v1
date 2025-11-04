@@ -12,7 +12,7 @@ router.post(
         body('purpose').trim().not().isEmpty(),
         body('amount').isNumeric().not().isEmpty(),
         body('transation_in').isIn(['CASH','ACCOUNT']),
-        body('vendor').optional().isMongoId(),
+        body('vendor').optional({ nullable: true }).isMongoId(),
         body('priority').isIn(['HIGH', 'MEDIUM', 'LOW'])
     ],
     requestController.createRequest
