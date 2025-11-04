@@ -571,7 +571,13 @@ exports.getAllVendors = async (req, res) => {
     }
 
     const vendors = await Vendor.find(query)
-      .populate('vendor_belongs_to') // <-- populate here
+      .populate({
+        path: 'vendor_belongs_to',
+        populate: {
+          path: 'department.department',
+          select: 'name description' // adjust fields you want from department
+        }
+      })
       .sort({ createdAt: -1 });
 
     res.json({ success: true, vendors });
@@ -579,4 +585,5 @@ exports.getAllVendors = async (req, res) => {
     res.status(500).json({ success: false, error: error.message });
   }
 };
+
 
