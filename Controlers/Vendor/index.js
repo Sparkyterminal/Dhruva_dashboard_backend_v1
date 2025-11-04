@@ -570,10 +570,13 @@ exports.getAllVendors = async (req, res) => {
       query.name = { $regex: search.trim(), $options: 'i' };
     }
 
-    const vendors = await Vendor.find(query).sort({ createdAt: -1 });
+    const vendors = await Vendor.find(query)
+      .populate('vendor_belongs_to') // <-- populate here
+      .sort({ createdAt: -1 });
 
     res.json({ success: true, vendors });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
   }
 };
+
