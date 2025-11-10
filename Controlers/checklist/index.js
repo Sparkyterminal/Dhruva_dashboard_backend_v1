@@ -22,11 +22,11 @@ module.exports.createChecklist = async (req, res) => {
     const token = req.get('Authorization');
     let decodedToken = await jwt.decode(token);
 
-    if(decodedToken.role != "ADMIN"){
-        return res.status(STATUS.UNAUTHORISED).json({
-            message: MESSAGE.unauthorized,
-        });
-    }
+    // if(decodedToken.role != "ADMIN"){
+    //     return res.status(STATUS.UNAUTHORISED).json({
+    //         message: MESSAGE.unauthorized,
+    //     });
+    // }
 
     try {
         const { heading, points, department } = req.body;
@@ -99,11 +99,11 @@ module.exports.getChecklists = async (req, res) => {
     const token = req.get('Authorization');
     let decodedToken = await jwt.decode(token);
 
-    if(decodedToken.role != "ADMIN"){
-        return res.status(STATUS.UNAUTHORISED).json({
-            message: MESSAGE.unauthorized,
-        });
-    }
+    // if(decodedToken.role != "ADMIN"){
+    //     return res.status(STATUS.UNAUTHORISED).json({
+    //         message: MESSAGE.unauthorized,
+    //     });
+    // }
 
     // Set Status From Request Query
     let status = true;
@@ -270,11 +270,11 @@ module.exports.getChecklistById = async (req, res) => {
     const token = req.get('Authorization');
     let decodedToken = await jwt.decode(token);
 
-    if(decodedToken.role != "ADMIN"){
-        return res.status(STATUS.UNAUTHORISED).json({
-            message: MESSAGE.unauthorized,
-        });
-    }
+    // if(decodedToken.role != "ADMIN"){
+    //     return res.status(STATUS.UNAUTHORISED).json({
+    //         message: MESSAGE.unauthorized,
+    //     });
+    // }
 
     try{
         let checklist = await Checklist.findOne({ 
@@ -315,11 +315,11 @@ module.exports.updateChecklist = async (req, res) => {
     const token = req.get('Authorization');
     let decodedToken = await jwt.decode(token);
 
-    if(decodedToken.role != "ADMIN"){
-        return res.status(STATUS.UNAUTHORISED).json({
-            message: MESSAGE.unauthorized,
-        });
-    }
+    // if(decodedToken.role != "ADMIN"){
+    //     return res.status(STATUS.UNAUTHORISED).json({
+    //         message: MESSAGE.unauthorized,
+    //     });
+    // }
 
     try{
         let { id } = req.params;
@@ -407,11 +407,11 @@ module.exports.updateChecklistStatus = async (req, res) => {
     const token = req.get('Authorization');
     let decodedToken = await jwt.decode(token);
 
-    if(decodedToken.role != "ADMIN"){
-        return res.status(STATUS.UNAUTHORISED).json({
-            message: MESSAGE.unauthorized,
-        });
-    }
+    // if(decodedToken.role != "ADMIN"){
+    //     return res.status(STATUS.UNAUTHORISED).json({
+    //         message: MESSAGE.unauthorized,
+    //     });
+    // }
 
     try {
         let { id } = req.params;
@@ -455,11 +455,11 @@ module.exports.archiveOrActiveChecklist = async (req, res) => {
     const token = req.get('Authorization');
     let decodedToken = await jwt.decode(token);
 
-    if(decodedToken.role != "ADMIN"){
-        return res.status(STATUS.UNAUTHORISED).json({
-            message: MESSAGE.unauthorized,
-        });
-    }
+    // if(decodedToken.role != "ADMIN"){
+    //     return res.status(STATUS.UNAUTHORISED).json({
+    //         message: MESSAGE.unauthorized,
+    //     });
+    // }
 
     try {
         let { id } = req.params;
@@ -503,11 +503,11 @@ module.exports.deleteChecklist = async (req, res) => {
     const token = req.get('Authorization');
     let decodedToken = await jwt.decode(token);
 
-    if(decodedToken.role != "ADMIN"){
-        return res.status(STATUS.UNAUTHORISED).json({
-            message: MESSAGE.unauthorized,
-        });
-    }
+    //  if(decodedToken.role != "ADMIN"){
+    //     return res.status(STATUS.UNAUTHORISED).json({
+    //         message: MESSAGE.unauthorized,
+    //     });
+    // }
 
     try {
         let { id } = req.params;
