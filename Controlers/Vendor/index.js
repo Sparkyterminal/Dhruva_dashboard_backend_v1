@@ -575,7 +575,7 @@ exports.getAllVendors = async (req, res) => {
         path: 'vendor_belongs_to',
         populate: {
           path: 'department.department',
-          select: 'name description' // adjust fields you want from department
+          select: 'name description' 
         }
       })
       .sort({ createdAt: -1 });
