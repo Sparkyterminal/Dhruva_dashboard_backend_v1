@@ -187,89 +187,89 @@ module.exports.getMyRequestById = async (req, res) => {
     }
 };
 
-module.exports.getAllRequests = async (req, res) => {
-    const token = req.get('Authorization');
-    let decodedToken = await jwt.decode(token);
+// module.exports.getAllRequests = async (req, res) => {
+//     const token = req.get('Authorization');
+//     let decodedToken = await jwt.decode(token);
   
-    // Only OWNER, ADMIN, DEPARTMENT, APPROVER can view all requests
-    if (!['OWNER', 'ADMIN', 'DEPARTMENT', 'APPROVER'].includes(decodedToken.role)) {
-      return res.status(STATUS.UNAUTHORISED).json({
-        message: MESSAGE.unauthorized,
-      });
-    }
+//     // Only OWNER, ADMIN, DEPARTMENT, APPROVER can view all requests
+//     if (!['OWNER', 'ADMIN', 'DEPARTMENT', 'APPROVER'].includes(decodedToken.role)) {
+//       return res.status(STATUS.UNAUTHORISED).json({
+//         message: MESSAGE.unauthorized,
+//       });
+//     }
   
-    try {
-      const page = parseInt(req.query.page) || 1;
-      const size = parseInt(req.query.size) || 10;
-      const status = req.query.status;
-      const priority = req.query.priority;
-      const department = req.query.department;
-      const search = req.query.search?.trim();
+//     try {
+//       const page = parseInt(req.query.page) || 1;
+//       const size = parseInt(req.query.size) || 10;
+//       const status = req.query.status;
+//       const priority = req.query.priority;
+//       const department = req.query.department;
+//       const search = req.query.search?.trim();
   
-      // Date filter inputs
-      const startDate = req.query.startDate ? new Date(req.query.startDate) : null;
-      const endDate = req.query.endDate ? new Date(req.query.endDate) : null;
-      const singleDate = req.query.date ? new Date(req.query.date) : null;
+//       // Date filter inputs
+//       const startDate = req.query.startDate ? new Date(req.query.startDate) : null;
+//       const endDate = req.query.endDate ? new Date(req.query.endDate) : null;
+//       const singleDate = req.query.date ? new Date(req.query.date) : null;
   
-      let query = { is_archived: false };
+//       let query = { is_archived: false };
   
-      // Apply filters
-      if (status) query.status = status;
-      if (priority) query.priority = priority;
-      if (department) query.department = department;
+//       // Apply filters
+//       if (status) query.status = status;
+//       if (priority) query.priority = priority;
+//       if (department) query.department = department;
   
-      // Date filtering logic
-      if (singleDate) {
-        const startOfDay = new Date(singleDate);
-        startOfDay.setHours(0, 0, 0, 0);
+//       // Date filtering logic
+//       if (singleDate) {
+//         const startOfDay = new Date(singleDate);
+//         startOfDay.setHours(0, 0, 0, 0);
   
-        const endOfDay = new Date(singleDate);
-        endOfDay.setHours(23, 59, 59, 999);
+//         const endOfDay = new Date(singleDate);
+//         endOfDay.setHours(23, 59, 59, 999);
   
-        query.createdAt = { $gte: startOfDay, $lte: endOfDay };
-      } else if (startDate && endDate) {
-        query.createdAt = { $gte: startDate, $lte: endDate };
-      } else if (startDate) {
-        query.createdAt = { $gte: startDate };
-      } else if (endDate) {
-        query.createdAt = { $lte: endDate };
-      }
+//         query.createdAt = { $gte: startOfDay, $lte: endOfDay };
+//       } else if (startDate && endDate) {
+//         query.createdAt = { $gte: startDate, $lte: endDate };
+//       } else if (startDate) {
+//         query.createdAt = { $gte: startDate };
+//       } else if (endDate) {
+//         query.createdAt = { $lte: endDate };
+//       }
   
-      // Search filter in multiple fields
-      if (search) {
-        query.$or = [
-          { title: { $regex: search, $options: 'i' } },
-          { description: { $regex: search, $options: 'i' } },
-          { 'requested_by.first_name': { $regex: search, $options: 'i' } },
-          { 'requested_by.last_name': { $regex: search, $options: 'i' } },
-          { 'requested_by.email_data': { $regex: search, $options: 'i' } },
-        ];
-      }
+//       // Search filter in multiple fields
+//       if (search) {
+//         query.$or = [
+//           { title: { $regex: search, $options: 'i' } },
+//           { description: { $regex: search, $options: 'i' } },
+//           { 'requested_by.first_name': { $regex: search, $options: 'i' } },
+//           { 'requested_by.last_name': { $regex: search, $options: 'i' } },
+//           { 'requested_by.email_data': { $regex: search, $options: 'i' } },
+//         ];
+//       }
   
-      const documentCount = await Request.countDocuments(query);
-      const requests = await Request.find(query)
-        .sort({ createdAt: -1 })
-        .skip((page - 1) * size)
-        .limit(size)
-        .populate('requested_by', 'id first_name last_name email_data designation')
-        .populate('department', 'id name')
-        .populate('vendor', 'id name')
-        .exec();
+//       const documentCount = await Request.countDocuments(query);
+//       const requests = await Request.find(query)
+//         .sort({ createdAt: -1 })
+//         .skip((page - 1) * size)
+//         .limit(size)
+//         .populate('requested_by', 'id first_name last_name email_data designation')
+//         .populate('department', 'id name')
+//         .populate('vendor', 'id name')
+//         .exec();
   
-      return res.status(STATUS.SUCCESS).json({
-        currentPage: page,
-        items: requests,
-        totalItems: documentCount,
-        totalPages: Math.ceil(documentCount / size),
-      });
-    } catch (error) {
-      console.error('Error fetching requests:', error);
-      return res.status(STATUS.INTERNAL_SERVER_ERROR).json({
-        message: MESSAGE.internalServerError,
-        error: error.message,
-      });
-    }
-  }
+//       return res.status(STATUS.SUCCESS).json({
+//         currentPage: page,
+//         items: requests,
+//         totalItems: documentCount,
+//         totalPages: Math.ceil(documentCount / size),
+//       });
+//     } catch (error) {
+//       console.error('Error fetching requests:', error);
+//       return res.status(STATUS.INTERNAL_SERVER_ERROR).json({
+//         message: MESSAGE.internalServerError,
+//         error: error.message,
+//       });
+//     }
+//   }
 
 // module.exports.getAllRequests = async (req, res) => {
 //   const token = req.get('Authorization');
@@ -354,6 +354,103 @@ module.exports.getAllRequests = async (req, res) => {
 //     });
 //   }
 // }
+
+module.exports.getAllRequests = async (req, res) => {
+    const token = req.get('Authorization');
+    let decodedToken = await jwt.decode(token);
+  
+    // Only OWNER, ADMIN, DEPARTMENT, APPROVER can view all requests
+    if (!['OWNER', 'ADMIN', 'DEPARTMENT', 'APPROVER'].includes(decodedToken.role)) {
+      return res.status(STATUS.UNAUTHORISED).json({
+        message: MESSAGE.unauthorized,
+      });
+    }
+  
+    try {
+      const page = parseInt(req.query.page) || 1;
+      const size = parseInt(req.query.size) || 10;
+      const status = req.query.status;
+      const priority = req.query.priority;
+      const department = req.query.department;
+      const search = req.query.search?.trim();
+  
+      // Date filter inputs
+      const startDate = req.query.startDate ? new Date(req.query.startDate) : null;
+      const endDate = req.query.endDate ? new Date(req.query.endDate) : null;
+      const singleDate = req.query.date ? new Date(req.query.date) : null;
+  
+      let query = { is_archived: false };
+  
+      // Apply filters
+      if (status) query.status = status;
+      if (priority) query.priority = priority;
+      if (department) query.department = department;
+  
+      // Date filtering logic
+      if (singleDate) {
+        const startOfDay = new Date(singleDate);
+        startOfDay.setHours(0, 0, 0, 0);
+  
+        const endOfDay = new Date(singleDate);
+        endOfDay.setHours(23, 59, 59, 999);
+  
+        query.createdAt = { $gte: startOfDay, $lte: endOfDay };
+      } else if (startDate && endDate) {
+        query.createdAt = { $gte: startDate, $lte: endDate };
+      } else if (startDate) {
+        query.createdAt = { $gte: startDate };
+      } else if (endDate) {
+        query.createdAt = { $lte: endDate };
+      }
+  
+      // Search filter in multiple fields, including department name
+      let departmentIds = [];
+      if (search) {
+        // Find matching departments by name (case-insensitive)
+        const matchingDepts = await Department.find({
+          name: { $regex: search, $options: 'i' }
+        }, '_id');
+        departmentIds = matchingDepts.map(dep => dep._id);
+  
+        // Build $or filters
+        query.$or = [
+          { title: { $regex: search, $options: 'i' } },
+          { description: { $regex: search, $options: 'i' } },
+          { 'requested_by.first_name': { $regex: search, $options: 'i' } },
+          { 'requested_by.last_name': { $regex: search, $options: 'i' } },
+          { 'requested_by.email_data': { $regex: search, $options: 'i' } },
+        ];
+  
+        // Allow search by department name as well
+        if (departmentIds.length) {
+          query.$or.push({ department: { $in: departmentIds } });
+        }
+      }
+  
+      const documentCount = await Request.countDocuments(query);
+      const requests = await Request.find(query)
+        .sort({ createdAt: -1 })
+        .skip((page - 1) * size)
+        .limit(size)
+        .populate('requested_by', 'id first_name last_name email_data designation')
+        .populate('department', 'id name')
+        .populate('vendor', 'id name')
+        .exec();
+  
+      return res.status(STATUS.SUCCESS).json({
+        currentPage: page,
+        items: requests,
+        totalItems: documentCount,
+        totalPages: Math.ceil(documentCount / size),
+      });
+    } catch (error) {
+      console.error('Error fetching requests:', error);
+      return res.status(STATUS.INTERNAL_SERVER_ERROR).json({
+        message: MESSAGE.internalServerError,
+        error: error.message,
+      });
+    }
+  }
 
 module.exports.getRequestById = async (req, res) => {
     const token = req.get('Authorization');
