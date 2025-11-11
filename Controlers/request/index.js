@@ -5,6 +5,7 @@ const mongoose = require('mongoose');
 const Request = require("../../Modals/Request");
 const { validationResult } = require("express-validator");
 const jwt = require('jsonwebtoken');
+const Department = require("../../Modals/Department");
 
 const JWT_SECRET = process.env.JWT_SECRET;
 
