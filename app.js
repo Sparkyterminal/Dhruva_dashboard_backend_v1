@@ -81,7 +81,7 @@ app.get('/', (req, res) => {
   
   // Database connection
   try {
-    const DB_URL = process.env.DB_URL || "mongodb://localhost:27017/dashboard";
+    const DB_URL = process.env.DB_URL || "mongodb+srv://naveengccursor_db_user:JvalSatQuJ1kcDrv@dashboarddhruva.h5rq6qe.mongodb.net/?appName=dashboarddhruva";
     const DB_PORT = process.env.PORT || PORT;
 
     mongoose.connect(DB_URL, { useNewUrlParser: true, useUnifiedTopology: true })
