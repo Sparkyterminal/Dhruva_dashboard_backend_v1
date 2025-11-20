@@ -29,7 +29,7 @@ module.exports.createChecklist = async (req, res) => {
     // }
 
     try {
-        const { heading, points, department } = req.body;
+        const { heading, eventReference, points, department } = req.body;
 
         // Validate required fields
         if (!heading || typeof heading !== 'string' || heading.trim().length === 0) {
@@ -44,6 +44,17 @@ module.exports.createChecklist = async (req, res) => {
                 message: 'Points array is required and must not be empty',
                 field: 'points'
             });
+        }
+
+        // Validate each point object
+        for (let i = 0; i < points.length; i++) {
+            const point = points[i];
+            if (!point.checklistPoint || typeof point.checklistPoint !== 'string' || point.checklistPoint.trim().length === 0) {
+                return res.status(STATUS.VALIDATION_FAILED).json({
+                    message: `Point ${i + 1}: checklistPoint is required`,
+                    field: `points[${i}].checklistPoint`
+                });
+            }
         }
 
         if (!department || !mongoose.Types.ObjectId.isValid(department)) {
@@ -61,10 +72,23 @@ module.exports.createChecklist = async (req, res) => {
             });
         }
 
+        // Process points - ensure all fields are properly formatted
+        const processedPoints = points.map(point => ({
+            checklistPoint: point.checklistPoint.trim(),
+            units: point.units ? String(point.units).trim() : '',
+            length: point.length ? String(point.length).trim() : '',
+            breadth: point.breadth ? String(point.breadth).trim() : '',
+            depth: point.depth ? String(point.depth).trim() : '',
+            quantity: point.quantity ? Number(point.quantity) : 0,
+            numbers: point.numbers ? Number(point.numbers) : 0,
+            rate: point.rate ? Number(point.rate) : 0
+        }));
+
         // Create checklist
         const checklist = new Checklist({
             heading: heading.trim(),
-            points: points.map(point => typeof point === 'string' ? point.trim() : String(point)),
+            eventReference: eventReference ? eventReference.trim() : '',
+            points: processedPoints,
             department: department
         });
 
@@ -73,6 +97,7 @@ module.exports.createChecklist = async (req, res) => {
         return res.status(STATUS.CREATED).json({
             id: savedChecklist.id,
             heading: savedChecklist.heading,
+            eventReference: savedChecklist.eventReference,
             points: savedChecklist.points,
             department: savedChecklist.department
         });
@@ -323,7 +348,7 @@ module.exports.updateChecklist = async (req, res) => {
 
     try{
         let { id } = req.params;
-        const { heading, points, department } = req.body;
+        const { heading, eventReference, points, department } = req.body;
 
         const updateData = {};
 
@@ -337,6 +362,10 @@ module.exports.updateChecklist = async (req, res) => {
             updateData.heading = heading.trim();
         }
 
+        if (eventReference !== undefined) {
+            updateData.eventReference = typeof eventReference === 'string' ? eventReference.trim() : '';
+        }
+
         if (points !== undefined) {
             if (!Array.isArray(points) || points.length === 0) {
                 return res.status(STATUS.VALIDATION_FAILED).json({
@@ -344,7 +373,29 @@ module.exports.updateChecklist = async (req, res) => {
                     field: 'points'
                 });
             }
-            updateData.points = points.map(point => typeof point === 'string' ? point.trim() : String(point));
+
+            // Validate each point object
+            for (let i = 0; i < points.length; i++) {
+                const point = points[i];
+                if (!point.checklistPoint || typeof point.checklistPoint !== 'string' || point.checklistPoint.trim().length === 0) {
+                    return res.status(STATUS.VALIDATION_FAILED).json({
+                        message: `Point ${i + 1}: checklistPoint is required`,
+                        field: `points[${i}].checklistPoint`
+                    });
+                }
+            }
+
+            // Process points - ensure all fields are properly formatted
+            updateData.points = points.map(point => ({
+                checklistPoint: point.checklistPoint.trim(),
+                units: point.units ? String(point.units).trim() : '',
+                length: point.length ? String(point.length).trim() : '',
+                breadth: point.breadth ? String(point.breadth).trim() : '',
+                depth: point.depth ? String(point.depth).trim() : '',
+                quantity: point.quantity ? Number(point.quantity) : 0,
+                numbers: point.numbers ? Number(point.numbers) : 0,
+                rate: point.rate ? Number(point.rate) : 0
+            }));
         }
 
         if (department !== undefined) {
@@ -379,6 +430,7 @@ module.exports.updateChecklist = async (req, res) => {
             return res.status(STATUS.SUCCESS).json({
                 id: checklist.id,
                 heading: checklist.heading,
+                eventReference: checklist.eventReference,
                 points: checklist.points,
                 department: checklist.department,
                 message: "Checklist Updated"
