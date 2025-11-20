@@ -122,7 +122,12 @@ const vendorSchema = new Schema(
         //   return this.person_category === 'COMPANY';
         // }
       },
-      
+      refered_by: {
+        type: String,
+        required: false
+      },
+
+     
     temp_address_1: {
       type: String,
       required: false
