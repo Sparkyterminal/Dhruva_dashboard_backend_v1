@@ -10,7 +10,9 @@ router.post(
     isAuth,
     [
         body('heading').trim().not().isEmpty().withMessage('Heading is required'),
+        body('eventReference').optional().trim(),
         body('points').isArray({ min: 1 }).withMessage('Points must be a non-empty array'),
+        body('points.*.checklistPoint').not().isEmpty().withMessage('Each point must have a checklistPoint'),
         body('department').not().isEmpty().withMessage('Department ID is required')
     ],
     checklistController.createChecklist
