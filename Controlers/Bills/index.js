@@ -82,8 +82,8 @@ const getMonthYear = (date) => ({
 // Create a new bill
 exports.createBill = async (req, res) => {
   try {
-    const { name, emiDate, amount } = req.body;
-    const bill = new Bill({ name, emiDate, amount, emiStatus: [] });
+    const { name, emiType, emiDate, amount } = req.body;
+    const bill = new Bill({ name, emiType, emiDate, amount, emiStatus: [] });
     await bill.save();
     res.status(201).json({ message: 'Bill created successfully', bill });
   } catch (error) {
@@ -133,12 +133,13 @@ exports.getBillById = async (req, res) => {
 // Update bill info and/or EMI payment status for current month/year
 exports.updateBill = async (req, res) => {
   try {
-    const { name, emiDate, amount, paid } = req.body;
+    const { name, emiType, emiDate, amount, paid } = req.body;
 
     const bill = await Bill.findById(req.params.id);
     if (!bill) return res.status(404).json({ message: 'Bill not found' });
 
     if (name !== undefined) bill.name = name;
+    if (emiType !== undefined) bill.emiType = emiType;
     if (emiDate !== undefined) bill.emiDate = emiDate;
     if (amount !== undefined) bill.amount = amount;
 
