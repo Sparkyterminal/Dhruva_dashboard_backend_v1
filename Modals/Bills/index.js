@@ -38,6 +38,11 @@ const billSchema = new mongoose.Schema({
     required: true,
     trim: true,
   },
+  emiType: {
+    type: String,
+    required: true,
+    trim: true,
+  },
   emiDate: {  // The date of the EMI (day-of-month)
     type: Date,
     required: true,
