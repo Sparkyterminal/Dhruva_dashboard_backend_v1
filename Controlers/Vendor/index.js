@@ -311,6 +311,8 @@ exports.createVendor = async (req, res) => {
     name,
     person_category,
     company_name,
+    referred_by,
+    refered_by,
     temp_address_1,
     temp_city,
     temp_pin,
@@ -388,6 +390,7 @@ exports.createVendor = async (req, res) => {
     name: name.trim(),
     person_category,
     company_name: company_name ? company_name.trim() : '',
+    refered_by: (referred_by || refered_by) ? (referred_by || refered_by).trim() : '',
     temp_address_1: temp_address_1 ? temp_address_1.trim() : '',
     temp_city: temp_city ? temp_city.trim() : '',
     temp_pin: temp_pin ? temp_pin.trim() : '',
@@ -492,7 +495,20 @@ exports.getVendorById = async (req, res) => {
 // Update vendor
 exports.updateVendor = async (req, res) => {
   try {
-    const updatedData = req.body;
+    const updatedData = { ...req.body };
+
+    // Handle spelling difference: referred_by (from frontend) -> refered_by (in schema)
+    if (updatedData.referred_by !== undefined) {
+      updatedData.refered_by = typeof updatedData.referred_by === 'string' 
+        ? updatedData.referred_by.trim() 
+        : updatedData.referred_by;
+      delete updatedData.referred_by;
+    }
+
+    // Trim refered_by field if it exists
+    if (updatedData.refered_by && typeof updatedData.refered_by === 'string') {
+      updatedData.refered_by = updatedData.refered_by.trim();
+    }
 
     // Optionally add validation here
 
