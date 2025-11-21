@@ -193,7 +193,11 @@ exports.createEvent = async (req, res) => {
       brideName,
       groomName,
       contactNumber,
-      altContactNumber
+      agreedAmount,
+      advances,
+      altContactNumber,
+      lead1,
+      lead2
     } = req.body;
 
     if (!eventName || typeof eventName !== "string" || !eventName.trim()) {
@@ -225,10 +229,6 @@ exports.createEvent = async (req, res) => {
       if (!type.venueLocation || !type.venueLocation.trim()) {
         throw new Error(`eventTypes[${index}].venueLocation is required`);
       }
-      if (type.agreedAmount == null) {
-        throw new Error(`eventTypes[${index}].agreedAmount is required`);
-      }
-
       const advancesArray = Array.isArray(type.advances) ? type.advances : [];
 
       const advancesData = advancesArray.map((adv, advIndex) => {
@@ -259,12 +259,31 @@ exports.createEvent = async (req, res) => {
         startDate: new Date(type.startDate),
         endDate: new Date(type.endDate),
         venueLocation: type.venueLocation.trim(),
-        agreedAmount: type.agreedAmount,
-        lead1: type.lead1 ? type.lead1.trim() : "",
-        lead2: type.lead2 ? type.lead2.trim() : "",
+        agreedAmount: type.agreedAmount != null ? type.agreedAmount : undefined,
         advances: advancesData
       };
     });
+
+    const sharedAdvances = Array.isArray(advances)
+      ? advances.map((adv, advIndex) => {
+          if (adv.expectedAmount == null) {
+            throw new Error(`advances[${advIndex}].expectedAmount is required`);
+          }
+          if (!adv.advanceDate) {
+            throw new Error(`advances[${advIndex}].advanceDate is required`);
+          }
+          return {
+            advanceNumber: adv.advanceNumber != null ? adv.advanceNumber : advIndex + 1,
+            expectedAmount: adv.expectedAmount,
+            advanceDate: new Date(adv.advanceDate),
+            receivedAmount: adv.receivedAmount || 0,
+            receivedDate: adv.receivedDate ? new Date(adv.receivedDate) : null,
+            remarks: adv.remarks || { accounts: "", owner: "", approver: "" },
+            updatedBy: adv.updatedBy || { accounts: null, owner: null, approver: null },
+            updatedAt: adv.updatedAt || { accounts: null, owner: null, approver: null }
+          };
+        })
+      : [];
 
     const event = new Event({
       eventName: eventName.trim(),
@@ -272,7 +291,11 @@ exports.createEvent = async (req, res) => {
       clientName: clientName.trim(),
       brideName: brideName ? brideName.trim() : undefined,
       groomName: groomName ? groomName.trim() : undefined,
+      lead1: lead1 ? lead1.trim() : "",
+      lead2: lead2 ? lead2.trim() : "",
       contactNumber: contactNumber.trim(),
+      agreedAmount: agreedAmount != null ? agreedAmount : undefined,
+      advances: sharedAdvances,
       altContactNumber: altContactNumber ? altContactNumber.trim() : undefined
     });
 
@@ -315,12 +338,16 @@ exports.updateAdvance = async (req, res) => {
       ? event.eventTypes.find(et => et.eventType === selectedEventType)
       : event.eventTypes.find(et => et.advances.some(a => a.advanceNumber === parseInt(advanceNumber)));
 
-    if (!eventTypeDoc) {
-      return res.status(404).json({ message: "Event type not found for the specified advance" });
+    let advance;
+    if (eventTypeDoc) {
+      advance = eventTypeDoc.advances.find(a => a.advanceNumber === parseInt(advanceNumber));
+      if (!advance) return res.status(404).json({ message: "Advance not found" });
+    } else {
+      advance = event.advances.find(a => a.advanceNumber === parseInt(advanceNumber));
+      if (!advance) {
+        return res.status(404).json({ message: "Advance not found on event or event types" });
+      }
     }
-
-    const advance = eventTypeDoc.advances.find(a => a.advanceNumber === parseInt(advanceNumber));
-    if (!advance) return res.status(404).json({ message: "Advance not found" });
 
     if (typeof receivedAmount === "number") {
       advance.receivedAmount = receivedAmount;
@@ -412,7 +439,11 @@ exports.editEventExceptReceivedAmount = async (req, res) => {
       brideName,
       groomName,
       contactNumber,
-      altContactNumber
+      altContactNumber,
+      lead1,
+      lead2,
+      agreedAmount,
+      advances
     } = req.body;
 
     if (!eventName || !clientName || !contactNumber || !Array.isArray(eventTypes)) {
@@ -428,6 +459,9 @@ exports.editEventExceptReceivedAmount = async (req, res) => {
     event.groomName = groomName ? groomName.trim() : undefined;
     event.contactNumber = contactNumber.trim();
     event.altContactNumber = altContactNumber ? altContactNumber.trim() : undefined;
+    event.lead1 = lead1 ? lead1.trim() : "";
+    event.lead2 = lead2 ? lead2.trim() : "";
+    event.agreedAmount = agreedAmount != null ? agreedAmount : undefined;
 
     event.eventTypes = eventTypes.map((type, index) => {
       if (!type.eventType || !type.eventType.trim()) {
@@ -460,11 +494,26 @@ exports.editEventExceptReceivedAmount = async (req, res) => {
         endDate: type.endDate ? new Date(type.endDate) : (existingType ? existingType.endDate : null),
         venueLocation: type.venueLocation ? type.venueLocation.trim() : (existingType ? existingType.venueLocation : ""),
         agreedAmount: type.agreedAmount != null ? type.agreedAmount : (existingType ? existingType.agreedAmount : 0),
-        lead1: type.lead1 ? type.lead1.trim() : (existingType ? existingType.lead1 : ""),
-        lead2: type.lead2 ? type.lead2.trim() : (existingType ? existingType.lead2 : ""),
         advances
       };
     });
+
+    if (Array.isArray(advances)) {
+      event.advances = advances.map((adv, advIndex) => {
+        const advanceNumber = adv.advanceNumber != null ? adv.advanceNumber : advIndex + 1;
+        const existingAdvance = event.advances.find(a => a.advanceNumber === advanceNumber);
+        return {
+          advanceNumber,
+          expectedAmount: adv.expectedAmount,
+          advanceDate: adv.advanceDate ? new Date(adv.advanceDate) : (existingAdvance ? existingAdvance.advanceDate : null),
+          receivedAmount: existingAdvance ? existingAdvance.receivedAmount : 0,
+          receivedDate: existingAdvance ? existingAdvance.receivedDate : null,
+          remarks: existingAdvance ? existingAdvance.remarks : { accounts: "", owner: "", approver: "" },
+          updatedBy: existingAdvance ? existingAdvance.updatedBy : { accounts: null, owner: null, approver: null },
+          updatedAt: existingAdvance ? existingAdvance.updatedAt : { accounts: null, owner: null, approver: null },
+        };
+      });
+    }
 
     await event.save();
 
