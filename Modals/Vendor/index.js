@@ -107,6 +107,11 @@ const ObjectId = Schema.Types.ObjectId;
 
 const vendorSchema = new Schema(
   {
+    vendor_code: {
+      type: String,
+      required: true,
+      unique: true
+    },
     name: {
       type: String,
       required: true
