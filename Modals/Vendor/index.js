@@ -132,7 +132,11 @@ const vendorSchema = new Schema(
         required: false
       },
 
-     
+     department: {
+      type: ObjectId,
+      ref: 'department',
+      required: false
+     },
     temp_address_1: {
       type: String,
       required: false
