@@ -284,6 +284,7 @@ const STATUS = require("../../utils/statusCodes");
 const MESSAGE = require("../../utils/messages");
 const { validationResult } = require("express-validator");
 const User = require('../../Modals/User');
+const Department = require('../../Modals/Department');
 const mongoose = require('mongoose');
 
 const generateVendorCode = async () => {
@@ -333,6 +334,7 @@ exports.createVendor = async (req, res) => {
     company_name,
     referred_by,
     refered_by,
+    department,
     temp_address_1,
     temp_city,
     temp_pin,
@@ -398,6 +400,24 @@ exports.createVendor = async (req, res) => {
     }
   }
 
+  // Validate department if provided
+  if (department) {
+    if (!mongoose.Types.ObjectId.isValid(department)) {
+      return res.status(STATUS.VALIDATION_FAILED).json({
+        message: 'Invalid department ID',
+        field: 'department'
+      });
+    }
+    // Verify department exists
+    const departmentExists = await Department.findById(department);
+    if (!departmentExists) {
+      return res.status(STATUS.NOT_FOUND).json({
+        message: 'Department not found',
+        field: 'department'
+      });
+    }
+  }
+
 //   if (!vendor_type || !['MATERIAL', 'LABOUR', 'COMPOSITE', 'EXPENSES'].includes(vendor_type)) {
 //     return res.status(STATUS.VALIDATION_FAILED).json({
 //       message: 'Invalid vendor type',
@@ -414,6 +434,7 @@ exports.createVendor = async (req, res) => {
     person_category,
     company_name: company_name ? company_name.trim() : '',
     refered_by: (referred_by || refered_by) ? (referred_by || refered_by).trim() : '',
+    department: department || null,
     temp_address_1: temp_address_1 ? temp_address_1.trim() : '',
     temp_city: temp_city ? temp_city.trim() : '',
     temp_pin: temp_pin ? temp_pin.trim() : '',
@@ -493,7 +514,9 @@ exports.getVendors = async (req, res) => {
       vendorQuery.name = { $regex: search.trim(), $options: 'i' };
     }
 
-    const vendors = await Vendor.find(vendorQuery).sort({ createdAt: -1 });
+    const vendors = await Vendor.find(vendorQuery)
+      .populate('department', 'id name')
+      .sort({ createdAt: -1 });
 
     res.json({ success: true, vendors });
   } catch (error) {
@@ -504,7 +527,8 @@ exports.getVendors = async (req, res) => {
 // Get single vendor by ID
 exports.getVendorById = async (req, res) => {
   try {
-    const vendor = await Vendor.findOne({ _id: req.params.id });
+    const vendor = await Vendor.findOne({ _id: req.params.id })
+      .populate('department', 'id name');
 
     if (!vendor) {
       return res.status(404).json({ success: false, error: "Vendor not found" });
@@ -534,13 +558,33 @@ exports.updateVendor = async (req, res) => {
       updatedData.refered_by = updatedData.refered_by.trim();
     }
 
-    // Optionally add validation here
+    // Validate department if provided
+    if (updatedData.department !== undefined) {
+      if (updatedData.department === null || updatedData.department === '') {
+        updatedData.department = null;
+      } else {
+        if (!mongoose.Types.ObjectId.isValid(updatedData.department)) {
+          return res.status(STATUS.VALIDATION_FAILED).json({
+            message: 'Invalid department ID',
+            field: 'department'
+          });
+        }
+        // Verify department exists
+        const departmentExists = await Department.findById(updatedData.department);
+        if (!departmentExists) {
+          return res.status(STATUS.NOT_FOUND).json({
+            message: 'Department not found',
+            field: 'department'
+          });
+        }
+      }
+    }
 
     const vendor = await Vendor.findOneAndUpdate(
       { _id: req.params.id },
       updatedData,
       { new: true, runValidators: true }
-    );
+    ).populate('department', 'id name');
 
     if (!vendor) {
       return res.status(404).json({ success: false, error: "Vendor not found or unauthorized" });
@@ -591,7 +635,9 @@ exports.getVendorsByDepartmentId = async (req, res) => {
 
     const vendors = await Vendor.find({
       vendor_belongs_to: { $in: userIds }
-    }).sort({ createdAt: -1 });
+    })
+      .populate('department', 'id name')
+      .sort({ createdAt: -1 });
 
     return res.status(STATUS.SUCCESS).json({ vendors });
   } catch (error) {
@@ -611,6 +657,7 @@ exports.getAllVendors = async (req, res) => {
     }
 
     const vendors = await Vendor.find(query)
+      .populate('department', 'id name')
       .populate({
         path: 'vendor_belongs_to',
         populate: {
