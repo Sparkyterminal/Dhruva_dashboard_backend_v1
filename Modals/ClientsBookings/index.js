@@ -30,9 +30,12 @@ const advanceSchema = new mongoose.Schema({
 
 const eventTypeSchema = new mongoose.Schema({
   eventType: { type: String, required: true },
-  eventDate: { type: Date, required: true },
+  startDate: { type: Date, required: true },
+  endDate: { type: Date, required: true },
   venueLocation: { type: String, required: true },
   agreedAmount: { type: Number, required: true },
+  lead1: { type: String, default: "" },
+  lead2: { type: String, default: "" },
   advances: { type: [advanceSchema], default: [] }
 }, { _id: false });
 
