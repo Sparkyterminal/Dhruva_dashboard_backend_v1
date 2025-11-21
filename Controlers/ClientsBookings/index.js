@@ -216,8 +216,11 @@ exports.createEvent = async (req, res) => {
       if (!type.eventType || !type.eventType.trim()) {
         throw new Error(`eventTypes[${index}].eventType is required`);
       }
-      if (!type.eventDate) {
-        throw new Error(`eventTypes[${index}].eventDate is required`);
+      if (!type.startDate) {
+        throw new Error(`eventTypes[${index}].startDate is required`);
+      }
+      if (!type.endDate) {
+        throw new Error(`eventTypes[${index}].endDate is required`);
       }
       if (!type.venueLocation || !type.venueLocation.trim()) {
         throw new Error(`eventTypes[${index}].venueLocation is required`);
@@ -253,9 +256,12 @@ exports.createEvent = async (req, res) => {
 
       return {
         eventType: type.eventType.trim(),
-        eventDate: new Date(type.eventDate),
+        startDate: new Date(type.startDate),
+        endDate: new Date(type.endDate),
         venueLocation: type.venueLocation.trim(),
         agreedAmount: type.agreedAmount,
+        lead1: type.lead1 ? type.lead1.trim() : "",
+        lead2: type.lead2 ? type.lead2.trim() : "",
         advances: advancesData
       };
     });
@@ -424,6 +430,9 @@ exports.editEventExceptReceivedAmount = async (req, res) => {
     event.altContactNumber = altContactNumber ? altContactNumber.trim() : undefined;
 
     event.eventTypes = eventTypes.map((type, index) => {
+      if (!type.eventType || !type.eventType.trim()) {
+        throw new Error(`eventTypes[${index}].eventType is required`);
+      }
       const existingType = event.eventTypes.find(t => t.eventType === type.eventType);
 
       const advancesArray = Array.isArray(type.advances) ? type.advances : [];
@@ -447,9 +456,12 @@ exports.editEventExceptReceivedAmount = async (req, res) => {
 
       return {
         eventType: type.eventType.trim(),
-        eventDate: type.eventDate ? new Date(type.eventDate) : (existingType ? existingType.eventDate : null),
+        startDate: type.startDate ? new Date(type.startDate) : (existingType ? existingType.startDate : null),
+        endDate: type.endDate ? new Date(type.endDate) : (existingType ? existingType.endDate : null),
         venueLocation: type.venueLocation ? type.venueLocation.trim() : (existingType ? existingType.venueLocation : ""),
         agreedAmount: type.agreedAmount != null ? type.agreedAmount : (existingType ? existingType.agreedAmount : 0),
+        lead1: type.lead1 ? type.lead1.trim() : (existingType ? existingType.lead1 : ""),
+        lead2: type.lead2 ? type.lead2.trim() : (existingType ? existingType.lead2 : ""),
         advances
       };
     });
