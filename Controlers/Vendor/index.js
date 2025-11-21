@@ -673,4 +673,73 @@ exports.getAllVendors = async (req, res) => {
   }
 };
 
+// Get all vendors list with pagination and filters (authenticated)
+exports.getAllVendorsList = async (req, res) => {
+  try {
+    const { 
+      search, 
+      department, 
+      vendor_type, 
+      vendor_status,
+      page = 1, 
+      limit = 20 
+    } = req.query;
+
+    // Build query
+    let query = {};
+
+    // Search by name or vendor_code
+    if (search && search.trim()) {
+      query.$or = [
+        { name: { $regex: search.trim(), $options: 'i' } },
+        { vendor_code: { $regex: search.trim(), $options: 'i' } }
+      ];
+    }
+
+    // Filter by department
+    if (department && mongoose.Types.ObjectId.isValid(department)) {
+      query.department = department;
+    }
+
+    // Filter by vendor_type
+    if (vendor_type && vendor_type.trim()) {
+      query.vendor_type = vendor_type.trim();
+    }
+
+    // Filter by vendor_status
+    if (vendor_status && ['ACTIVE', 'INACTIVE'].includes(vendor_status)) {
+      query.vendor_status = vendor_status;
+    }
+
+    // Pagination
+    const pageInt = parseInt(page);
+    const limitInt = parseInt(limit);
+    const skip = (pageInt - 1) * limitInt;
+
+    // Get total count
+    const totalVendors = await Vendor.countDocuments(query);
+
+    // Get vendors with pagination
+    const vendors = await Vendor.find(query)
+      .populate('department', 'id name')
+      .populate('vendor_belongs_to', 'id name email')
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limitInt);
+
+    res.json({ 
+      success: true, 
+      vendors,
+      pagination: {
+        currentPage: pageInt,
+        totalPages: Math.ceil(totalVendors / limitInt),
+        totalVendors,
+        limit: limitInt
+      }
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
 
