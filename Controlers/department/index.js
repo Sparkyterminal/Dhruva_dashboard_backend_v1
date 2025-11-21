@@ -91,11 +91,11 @@ module.exports.getDepartments = async (req, res) => {
     const token = req.get('Authorization');
     let decodedToken = await jwt.decode(token);
 
-    if(decodedToken.role != "ADMIN"){
-        return res.status(STATUS.UNAUTHORISED).json({
-            message: MESSAGE.unauthorized,
-        });
-    }
+    // if(decodedToken.role != "ADMIN"){
+    //     return res.status(STATUS.UNAUTHORISED).json({
+    //         message: MESSAGE.unauthorized,
+    //     });
+    // }
 
     //Set Status From Request Query
 
