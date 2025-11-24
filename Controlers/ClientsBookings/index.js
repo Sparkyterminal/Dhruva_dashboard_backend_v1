@@ -232,9 +232,6 @@ exports.createEvent = async (req, res) => {
       const advancesArray = Array.isArray(type.advances) ? type.advances : [];
 
       const advancesData = advancesArray.map((adv, advIndex) => {
-        if (adv.advanceNumber == null) {
-          throw new Error(`eventTypes[${index}].advances[${advIndex}].advanceNumber is required`);
-        }
         if (adv.expectedAmount == null) {
           throw new Error(`eventTypes[${index}].advances[${advIndex}].expectedAmount is required`);
         }
@@ -242,8 +239,10 @@ exports.createEvent = async (req, res) => {
           throw new Error(`eventTypes[${index}].advances[${advIndex}].advanceDate is required`);
         }
 
+        const advanceNumber = adv.advanceNumber != null ? adv.advanceNumber : advIndex + 1;
+
         return {
-          advanceNumber: adv.advanceNumber,
+          advanceNumber,
           expectedAmount: adv.expectedAmount,
           advanceDate: new Date(adv.advanceDate),
           receivedAmount: adv.receivedAmount || 0,
@@ -373,8 +372,8 @@ exports.updateAdvance = async (req, res) => {
 // Add advance entry to a specific event type
 exports.addAdvanceToEventType = async (req, res) => {
   try {
-    const { eventId, eventType } = req.params;
-    const { expectedAmount, advanceDate, advanceNumber } = req.body;
+    const { eventId, eventType, advanceNumber: advanceNumberParam } = req.params;
+    const { expectedAmount, advanceDate } = req.body;
     const token = req.get('Authorization');
     if (!token) return res.status(401).json({ message: "Authorization token required" });
 
@@ -402,8 +401,8 @@ exports.addAdvanceToEventType = async (req, res) => {
     }
 
     let nextAdvanceNumber;
-    if (advanceNumber != null) {
-      nextAdvanceNumber = parseInt(advanceNumber, 10);
+    if (advanceNumberParam != null) {
+      nextAdvanceNumber = parseInt(advanceNumberParam, 10);
       if (Number.isNaN(nextAdvanceNumber)) {
         return res.status(400).json({ message: "advanceNumber must be a number" });
       }
@@ -517,12 +516,17 @@ exports.editEventExceptReceivedAmount = async (req, res) => {
       const advancesArray = Array.isArray(type.advances) ? type.advances : [];
 
       const advances = advancesArray.map((adv, advIndex) => {
+        let advanceNumber = adv.advanceNumber != null ? adv.advanceNumber : advIndex + 1;
         const existingAdvance = existingType
-          ? existingType.advances.find(a => a.advanceNumber === adv.advanceNumber)
+          ? existingType.advances.find(a => a.advanceNumber === advanceNumber)
           : null;
 
+        if (adv.advanceNumber == null && existingAdvance && existingAdvance.advanceNumber != null) {
+          advanceNumber = existingAdvance.advanceNumber;
+        }
+
         return {
-          advanceNumber: adv.advanceNumber,
+          advanceNumber,
           expectedAmount: adv.expectedAmount,
           advanceDate: adv.advanceDate ? new Date(adv.advanceDate) : (existingAdvance ? existingAdvance.advanceDate : null),
           receivedAmount: existingAdvance ? existingAdvance.receivedAmount : 0,
