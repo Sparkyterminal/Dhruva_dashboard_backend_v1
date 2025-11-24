@@ -182,6 +182,7 @@ const jwt = require('jsonwebtoken');
 const Event = require("../../Modals/ClientsBookings");
 const STATUS = require("../../utils/statusCodes");
 const MESSAGE = require("../../utils/messages");
+const mongoose = require("mongoose");
 
 const findEventTypeByIdentifier = (eventDoc, identifier) => {
   if (!identifier || !eventDoc || !Array.isArray(eventDoc.eventTypes)) return null;
