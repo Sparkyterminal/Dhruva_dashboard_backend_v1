@@ -14,24 +14,15 @@ router.post(
         body('subHeadings').isArray({ min: 1 }).withMessage('SubHeadings must be a non-empty array'),
         body('subHeadings.*.subHeadingName').not().isEmpty().withMessage('Each subHeading must have a subHeadingName'),
         body('subHeadings.*.checklists').isArray({ min: 1 }).withMessage('Each subHeading must have a non-empty checklists array'),
-        body('subHeadings.*.checklists.*.checklistName').not().isEmpty().withMessage('Each checklist must have a checklistName'),
-        body('department').not().isEmpty().withMessage('Department ID is required')
+        body('subHeadings.*.checklists.*.checklistName').not().isEmpty().withMessage('Each checklist must have a checklistName')
     ],
     checklistController.createChecklist
 );
 
-// Get all checklists (with pagination and filters)
 router.get(
     "/",
     isAuth,
     checklistController.getChecklists
-);
-
-// Get checklists by department ID
-router.get(
-    "/department/:id",
-    isAuth,
-    checklistController.getChecklistsByDepartmentId
 );
 
 // Get single checklist by ID

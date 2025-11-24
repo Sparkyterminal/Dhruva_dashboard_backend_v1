@@ -67,11 +67,6 @@ const checklistSchema = new Schema(
             required: true,
             default: []
         },
-        department: {
-            type: ObjectId,
-            ref: 'department',
-            required: true
-        },
         is_active: {
             type: Boolean,
             default: true
