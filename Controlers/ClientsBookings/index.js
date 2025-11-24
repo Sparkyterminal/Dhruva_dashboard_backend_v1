@@ -378,11 +378,11 @@ exports.updateAdvance = async (req, res) => {
   }
 };
 
-// Add advance entry to a specific event type
+// Update advance entry for a specific event type
 exports.addAdvanceToEventType = async (req, res) => {
   try {
-    const { eventId, eventTypeId, advanceNumber: advanceNumberParam } = req.params;
-    const { expectedAmount, receivedAmount, receivedDate, advanceDate, userId } = req.body;
+    const { eventId, eventTypeId, advanceNumber } = req.params;
+    const { expectedAmount, receivedAmount, receivedDate, advanceDate, remarks, userId } = req.body;
     const token = req.get('Authorization');
     if (!token) return res.status(401).json({ message: "Authorization token required" });
 
@@ -397,8 +397,17 @@ exports.addAdvanceToEventType = async (req, res) => {
       return res.status(400).json({ message: "Invalid role" });
     }
 
-    if (expectedAmount == null || (!advanceDate && !receivedDate)) {
-      return res.status(400).json({ message: "expectedAmount and (advanceDate or receivedDate) are required" });
+    if (!advanceNumber) {
+      return res.status(400).json({ message: "advanceNumber param is required" });
+    }
+
+    if (expectedAmount == null && receivedAmount == null && !receivedDate && !advanceDate && !remarks) {
+      return res.status(400).json({ message: "At least one field is required to update the advance" });
+    }
+
+    const parsedAdvanceNumber = parseInt(advanceNumber, 10);
+    if (Number.isNaN(parsedAdvanceNumber)) {
+      return res.status(400).json({ message: "advanceNumber must be a number" });
     }
 
     const event = await Event.findById(eventId);
@@ -409,51 +418,41 @@ exports.addAdvanceToEventType = async (req, res) => {
       return res.status(404).json({ message: "Event type not found" });
     }
 
-    let nextAdvanceNumber;
-    if (advanceNumberParam != null) {
-      nextAdvanceNumber = parseInt(advanceNumberParam, 10);
-      if (Number.isNaN(nextAdvanceNumber)) {
-        return res.status(400).json({ message: "advanceNumber must be a number" });
-      }
-      const conflict = eventTypeDoc.advances.some(a => a.advanceNumber === nextAdvanceNumber);
-      if (conflict) {
-        return res.status(400).json({ message: "advanceNumber already exists for this event type" });
-      }
-    } else {
-      const maxExisting = eventTypeDoc.advances.reduce((max, adv) => Math.max(max, adv.advanceNumber || 0), 0);
-      nextAdvanceNumber = maxExisting + 1;
+    const advance = eventTypeDoc.advances.find(a => a.advanceNumber === parsedAdvanceNumber);
+    if (!advance) {
+      return res.status(404).json({ message: "Advance not found for this event type" });
     }
 
-    const newAdvance = {
-      advanceNumber: nextAdvanceNumber,
-      expectedAmount,
-      advanceDate: new Date(advanceDate || receivedDate),
-      receivedAmount: typeof receivedAmount === "number" ? receivedAmount : 0,
-      receivedDate: receivedDate ? new Date(receivedDate) : null,
-      remarks: {
-        accounts: "",
-        owner: "",
-        approver: ""
-      },
-      updatedBy: {
-        accounts: userId || decodedToken.uid || null,
-        owner: null,
-        approver: null
-      },
-      updatedAt: {
-        accounts: new Date(),
-        owner: null,
-        approver: null
-      }
-    };
+    if (expectedAmount != null) {
+      advance.expectedAmount = expectedAmount;
+    }
+    if (typeof receivedAmount === "number") {
+      advance.receivedAmount = receivedAmount;
+    }
+    if (advanceDate) {
+      advance.advanceDate = new Date(advanceDate);
+    }
+    if (receivedDate) {
+      advance.receivedDate = new Date(receivedDate);
+    }
+    if (remarks && typeof remarks === "object") {
+      advance.remarks = {
+        accounts: remarks.accounts ?? advance.remarks.accounts,
+        owner: remarks.owner ?? advance.remarks.owner,
+        approver: remarks.approver ?? advance.remarks.approver
+      };
+    }
 
-    eventTypeDoc.advances.push(newAdvance);
+    const roleKey = role.toLowerCase();
+    advance.updatedBy[roleKey] = userId || decodedToken.uid || null;
+    advance.updatedAt[roleKey] = new Date();
+
     await event.save();
 
-    return res.status(201).json({
-      message: "Advance added successfully",
+    return res.status(200).json({
+      message: "Advance updated successfully",
       eventType: eventTypeDoc.eventType,
-      advance: newAdvance
+      advance
     });
   } catch (error) {
     console.error(error);
