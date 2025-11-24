@@ -29,7 +29,7 @@ router.post("/", eventController.createEvent);
 router.patch("/:eventId/advances/:advanceNumber", eventController.updateAdvance);
 
 // Add/Update advance to a specific event type
-router.patch("/:eventId/event-types/:eventType/advances/:advanceNumber?", eventController.addAdvanceToEventType);
+router.patch("/:eventId/event-types/:eventType/advances/:advanceNumber", eventController.addAdvanceToEventType);
 
 // Get event details by ID
 router.get("/:eventId", eventController.getEvent);
