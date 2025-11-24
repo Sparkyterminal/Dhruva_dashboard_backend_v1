@@ -35,7 +35,7 @@ const eventTypeSchema = new mongoose.Schema({
   venueLocation: { type: String, required: true },
   agreedAmount: { type: Number },
   advances: { type: [advanceSchema], default: [] }
-}, { _id: false });
+});
 
 const eventSchema = new mongoose.Schema({
   eventName: { type: String, required: true },
