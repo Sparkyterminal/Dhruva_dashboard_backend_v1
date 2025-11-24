@@ -1,9 +1,7 @@
 const STATUS = require("../../utils/statusCodes");
 const MESSAGE = require("../../utils/messages");
-const FUNCTION = require("../../utils/functions");
 
 const Checklist = require("../../Modals/Checklist");
-const Department = require("../../Modals/Department");
 const { validationResult } = require("express-validator");
 
 const jwt = require('jsonwebtoken');
@@ -29,7 +27,7 @@ module.exports.createChecklist = async (req, res) => {
     // }
 
     try {
-        const { heading, eventReference, subHeadings, department } = req.body;
+        const { heading, eventReference, subHeadings } = req.body;
 
         // Validate required fields
         if (!heading || typeof heading !== 'string' || heading.trim().length === 0) {
@@ -75,21 +73,6 @@ module.exports.createChecklist = async (req, res) => {
             }
         }
 
-        if (!department || !mongoose.Types.ObjectId.isValid(department)) {
-            return res.status(STATUS.VALIDATION_FAILED).json({
-                message: 'Valid department ID is required',
-                field: 'department'
-            });
-        }
-
-        // Verify department exists
-        const departmentExists = await Department.findById(department);
-        if (!departmentExists) {
-            return res.status(STATUS.NOT_FOUND).json({
-                message: 'Department not found',
-            });
-        }
-
         // Process subHeadings - ensure all fields are properly formatted
         const processedSubHeadings = subHeadings.map(subHeading => ({
             subHeadingName: subHeading.subHeadingName.trim(),
@@ -108,8 +91,7 @@ module.exports.createChecklist = async (req, res) => {
         const checklist = new Checklist({
             heading: heading.trim(),
             eventReference: eventReference ? eventReference.trim() : '',
-            subHeadings: processedSubHeadings,
-            department: department
+            subHeadings: processedSubHeadings
         });
 
         const savedChecklist = await checklist.save();
@@ -118,8 +100,7 @@ module.exports.createChecklist = async (req, res) => {
             id: savedChecklist.id,
             heading: savedChecklist.heading,
             eventReference: savedChecklist.eventReference,
-            subHeadings: savedChecklist.subHeadings,
-            department: savedChecklist.department
+            subHeadings: savedChecklist.subHeadings
         });
     } 
     catch (error) {
@@ -201,9 +182,6 @@ module.exports.getChecklists = async (req, res) => {
         }
     }
 
-    // Department filter
-    const departmentId = req.query.departmentId;
-
     try {
         let documentCount = 0;
         let checklists = [];
@@ -214,14 +192,9 @@ module.exports.getChecklists = async (req, res) => {
             query.is_active = status;
         }
 
-        if (departmentId && mongoose.Types.ObjectId.isValid(departmentId)) {
-            query.department = departmentId;
-        }
-        
         if(status === null){
             documentCount = await Checklist.countDocuments(query);
             checklists = await Checklist.find(query)
-                .populate('department', 'id name')
                 .skip((pageInt - 1) * sizeInt)
                 .limit(sizeInt)
                 .sort({ createdAt: sort })
@@ -230,7 +203,6 @@ module.exports.getChecklists = async (req, res) => {
         else{
             documentCount = await Checklist.countDocuments(query);
             checklists = await Checklist.find(query)
-                .populate('department', 'id name')
                 .skip((pageInt - 1) * sizeInt)
                 .limit(sizeInt)
                 .sort({ createdAt: sort })
@@ -242,55 +214,6 @@ module.exports.getChecklists = async (req, res) => {
             items: checklists,
             totalItems: documentCount,
             totalPages: Math.ceil(documentCount/sizeInt)
-        });
-    } 
-    catch (error) {
-        console.log(error);
-        return res.status(STATUS.INTERNAL_SERVER_ERROR).json({
-            message: MESSAGE.internalServerError,
-            error: error.message,
-        });
-    }
-}
-
-// Get checklists by department ID
-module.exports.getChecklistsByDepartmentId = async (req, res) => {
-    const errors = validationResult(req);
-
-    if (!errors.isEmpty()) {
-        return res.status(STATUS.BAD_REQUEST).json({
-            message: `Bad request`,
-        });
-    }
-
-    try {
-        const departmentId = req.params.id;
-
-        if (!mongoose.Types.ObjectId.isValid(departmentId)) {
-            return res.status(STATUS.BAD_REQUEST).json({ 
-                message: "Invalid department ID" 
-            });
-        }
-
-        // Verify department exists
-        const department = await Department.findById(departmentId);
-        if (!department) {
-            return res.status(STATUS.NOT_FOUND).json({ 
-                message: "Department not found" 
-            });
-        }
-
-        const checklists = await Checklist.find({
-            department: departmentId,
-            is_active: true,
-            is_archived: false
-        })
-        .populate('department', 'id name')
-        .sort({ createdAt: -1 });
-
-        return res.status(STATUS.SUCCESS).json({
-            success: true,
-            checklists
         });
     } 
     catch (error) {
@@ -325,7 +248,7 @@ module.exports.getChecklistById = async (req, res) => {
         let checklist = await Checklist.findOne({ 
             _id: req.params.id, 
             is_archived: false 
-        }).populate('department', 'id name');
+        });
 
         if(checklist != null){
             return res.status(STATUS.SUCCESS).json({
@@ -368,7 +291,7 @@ module.exports.updateChecklist = async (req, res) => {
 
     try{
         let { id } = req.params;
-        const { heading, eventReference, subHeadings, department } = req.body;
+        const { heading, eventReference, subHeadings } = req.body;
 
         const updateData = {};
 
@@ -438,28 +361,9 @@ module.exports.updateChecklist = async (req, res) => {
             }));
         }
 
-        if (department !== undefined) {
-            if (!mongoose.Types.ObjectId.isValid(department)) {
-                return res.status(STATUS.VALIDATION_FAILED).json({
-                    message: 'Invalid department ID',
-                    field: 'department'
-                });
-            }
-            
-            // Verify department exists
-            const departmentExists = await Department.findById(department);
-            if (!departmentExists) {
-                return res.status(STATUS.NOT_FOUND).json({
-                    message: 'Department not found',
-                });
-            }
-            
-            updateData.department = department;
-        }
-
         let checklist = await Checklist.findByIdAndUpdate(id, updateData, {
             new: true
-        }).populate('department', 'id name');
+        });
 
         if (!checklist) {
             return res.status(STATUS.NOT_FOUND).json({
@@ -472,7 +376,6 @@ module.exports.updateChecklist = async (req, res) => {
                 heading: checklist.heading,
                 eventReference: checklist.eventReference,
                 subHeadings: checklist.subHeadings,
-                department: checklist.department,
                 message: "Checklist Updated"
             });
         }
@@ -511,7 +414,7 @@ module.exports.updateChecklistStatus = async (req, res) => {
 
         let checklist = await Checklist.findByIdAndUpdate(id, { is_active }, {
             new: true,
-        }).populate('department', 'id name');
+        });
         
         if (!checklist) {
             return res.status(STATUS.NOT_FOUND).json({
@@ -559,7 +462,7 @@ module.exports.archiveOrActiveChecklist = async (req, res) => {
 
         let checklist = await Checklist.findByIdAndUpdate(id, { is_archived }, {
             new: true,
-        }).populate('department', 'id name');
+        });
         
         if (!checklist) {
             return res.status(STATUS.NOT_FOUND).json({
@@ -651,7 +554,6 @@ module.exports.getAllActiveChecklists = async (req, res) => {
             is_active: true, 
             is_archived: false 
         })
-        .populate('department', 'id name')
         .sort({ createdAt: -1 });
         
         return res.status(STATUS.SUCCESS).json(checklists);
