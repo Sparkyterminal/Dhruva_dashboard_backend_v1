@@ -394,8 +394,8 @@ exports.addAdvanceToEventType = async (req, res) => {
 
     const event = await Event.findById(eventId);
     if (!event) return res.status(404).json({ message: "Event not found" });
-
-    const eventTypeDoc = event.eventTypes.find(et => et.eventType === eventType);
+    console.log(eventType);
+    const eventTypeDoc = event.eventTypes.find(et => et._id.toString() === eventType);
     if (!eventTypeDoc) {
       return res.status(404).json({ message: "Event type not found" });
     }
