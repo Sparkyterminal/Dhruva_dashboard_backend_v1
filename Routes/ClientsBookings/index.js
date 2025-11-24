@@ -28,6 +28,9 @@ router.post("/", eventController.createEvent);
 // Update advance received amount and remarks by role
 router.patch("/:eventId/advances/:advanceNumber", eventController.updateAdvance);
 
+// Add advance to a specific event type
+router.post("/:eventId/event-types/:eventType/advances", eventController.addAdvanceToEventType);
+
 // Get event details by ID
 router.get("/:eventId", eventController.getEvent);
 

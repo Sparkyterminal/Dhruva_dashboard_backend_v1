@@ -370,6 +370,77 @@ exports.updateAdvance = async (req, res) => {
   }
 };
 
+// Add advance entry to a specific event type
+exports.addAdvanceToEventType = async (req, res) => {
+  try {
+    const { eventId, eventType } = req.params;
+    const { expectedAmount, advanceDate, advanceNumber } = req.body;
+    const token = req.get('Authorization');
+    if (!token) return res.status(401).json({ message: "Authorization token required" });
+
+    const decodedToken = jwt.decode(token);
+    if (!decodedToken || !decodedToken.role) {
+      return res.status(401).json({ message: "Invalid token" });
+    }
+
+    const role = decodedToken.role.toUpperCase();
+    const validRoles = ["DEPARTMENT", "OWNER", "APPROVER"];
+    if (!validRoles.includes(role)) {
+      return res.status(400).json({ message: "Invalid role" });
+    }
+
+    if (expectedAmount == null || !advanceDate) {
+      return res.status(400).json({ message: "expectedAmount and advanceDate are required" });
+    }
+
+    const event = await Event.findById(eventId);
+    if (!event) return res.status(404).json({ message: "Event not found" });
+
+    const eventTypeDoc = event.eventTypes.find(et => et.eventType === eventType);
+    if (!eventTypeDoc) {
+      return res.status(404).json({ message: "Event type not found" });
+    }
+
+    let nextAdvanceNumber;
+    if (advanceNumber != null) {
+      nextAdvanceNumber = parseInt(advanceNumber, 10);
+      if (Number.isNaN(nextAdvanceNumber)) {
+        return res.status(400).json({ message: "advanceNumber must be a number" });
+      }
+      const conflict = eventTypeDoc.advances.some(a => a.advanceNumber === nextAdvanceNumber);
+      if (conflict) {
+        return res.status(400).json({ message: "advanceNumber already exists for this event type" });
+      }
+    } else {
+      const maxExisting = eventTypeDoc.advances.reduce((max, adv) => Math.max(max, adv.advanceNumber || 0), 0);
+      nextAdvanceNumber = maxExisting + 1;
+    }
+
+    const newAdvance = {
+      advanceNumber: nextAdvanceNumber,
+      expectedAmount,
+      advanceDate: new Date(advanceDate),
+      receivedAmount: 0,
+      receivedDate: null,
+      remarks: { accounts: "", owner: "", approver: "" },
+      updatedBy: { accounts: null, owner: null, approver: null },
+      updatedAt: { accounts: null, owner: null, approver: null }
+    };
+
+    eventTypeDoc.advances.push(newAdvance);
+    await event.save();
+
+    return res.status(201).json({
+      message: "Advance added successfully",
+      eventType: eventTypeDoc.eventType,
+      advance: newAdvance
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
 // Get event by ID, including advances
 exports.getEvent = async (req, res) => {
   try {
