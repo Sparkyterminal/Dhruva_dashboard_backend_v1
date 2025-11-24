@@ -183,6 +183,14 @@ const Event = require("../../Modals/ClientsBookings");
 const STATUS = require("../../utils/statusCodes");
 const MESSAGE = require("../../utils/messages");
 
+const findEventTypeByIdentifier = (eventDoc, identifier) => {
+  if (!identifier || !eventDoc || !Array.isArray(eventDoc.eventTypes)) return null;
+  if (mongoose.Types.ObjectId.isValid(identifier)) {
+    return eventDoc.eventTypes.id(identifier);
+  }
+  return eventDoc.eventTypes.find(et => et.eventType === identifier);
+};
+
 // Create new event with event types & advances
 exports.createEvent = async (req, res) => {
   try {
@@ -334,8 +342,8 @@ exports.updateAdvance = async (req, res) => {
     if (!event) return res.status(404).json({ message: "Event not found" });
 
     const eventTypeDoc = selectedEventType
-      ? event.eventTypes.find(et => et.eventType === selectedEventType)
-      : event.eventTypes.find(et => et.advances.some(a => a.advanceNumber === parseInt(advanceNumber)));
+      ? findEventTypeByIdentifier(event, selectedEventType)
+      : event.eventTypes.find(et => et.advances.some(a => a.advanceNumber === parseInt(advanceNumber, 10)));
 
     let advance;
     if (eventTypeDoc) {
@@ -372,8 +380,8 @@ exports.updateAdvance = async (req, res) => {
 // Add advance entry to a specific event type
 exports.addAdvanceToEventType = async (req, res) => {
   try {
-    const { eventId, eventType, advanceNumber: advanceNumberParam } = req.params;
-    const { expectedAmount, receivedDate } = req.body;
+    const { eventId, eventTypeId, advanceNumber: advanceNumberParam } = req.params;
+    const { expectedAmount, receivedAmount, receivedDate, advanceDate, userId } = req.body;
     const token = req.get('Authorization');
     if (!token) return res.status(401).json({ message: "Authorization token required" });
 
@@ -388,14 +396,14 @@ exports.addAdvanceToEventType = async (req, res) => {
       return res.status(400).json({ message: "Invalid role" });
     }
 
-    if (expectedAmount == null || !receivedDate) {
-      return res.status(400).json({ message: "expectedAmount and receivedDate are required" });
+    if (expectedAmount == null || (!advanceDate && !receivedDate)) {
+      return res.status(400).json({ message: "expectedAmount and (advanceDate or receivedDate) are required" });
     }
 
     const event = await Event.findById(eventId);
     if (!event) return res.status(404).json({ message: "Event not found" });
-    console.log(eventType);
-    const eventTypeDoc = event.eventTypes.find(et => et._id.toString() === eventType);
+
+    const eventTypeDoc = findEventTypeByIdentifier(event, eventTypeId);
     if (!eventTypeDoc) {
       return res.status(404).json({ message: "Event type not found" });
     }
@@ -418,11 +426,24 @@ exports.addAdvanceToEventType = async (req, res) => {
     const newAdvance = {
       advanceNumber: nextAdvanceNumber,
       expectedAmount,
-      receivedDate: new Date(receivedDate),
-      receivedAmount: 0,
-      remarks: remarks || { accounts: "", owner: "", approver: "" },
-      updatedBy: { accounts: userId || null, owner: userId || null, approver: userId || null },
-      updatedAt: new Date()
+      advanceDate: new Date(advanceDate || receivedDate),
+      receivedAmount: typeof receivedAmount === "number" ? receivedAmount : 0,
+      receivedDate: receivedDate ? new Date(receivedDate) : null,
+      remarks: {
+        accounts: "",
+        owner: "",
+        approver: ""
+      },
+      updatedBy: {
+        accounts: userId || decodedToken.uid || null,
+        owner: null,
+        approver: null
+      },
+      updatedAt: {
+        accounts: new Date(),
+        owner: null,
+        approver: null
+      }
     };
 
     eventTypeDoc.advances.push(newAdvance);
