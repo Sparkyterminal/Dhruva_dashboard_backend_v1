@@ -373,7 +373,7 @@ exports.updateAdvance = async (req, res) => {
 exports.addAdvanceToEventType = async (req, res) => {
   try {
     const { eventId, eventType, advanceNumber: advanceNumberParam } = req.params;
-    const { expectedAmount, advanceDate } = req.body;
+    const { expectedAmount, receivedDate } = req.body;
     const token = req.get('Authorization');
     if (!token) return res.status(401).json({ message: "Authorization token required" });
 
@@ -388,8 +388,8 @@ exports.addAdvanceToEventType = async (req, res) => {
       return res.status(400).json({ message: "Invalid role" });
     }
 
-    if (expectedAmount == null || !advanceDate) {
-      return res.status(400).json({ message: "expectedAmount and advanceDate are required" });
+    if (expectedAmount == null || !receivedDate) {
+      return res.status(400).json({ message: "expectedAmount and receivedDate are required" });
     }
 
     const event = await Event.findById(eventId);
@@ -418,12 +418,11 @@ exports.addAdvanceToEventType = async (req, res) => {
     const newAdvance = {
       advanceNumber: nextAdvanceNumber,
       expectedAmount,
-      advanceDate: new Date(advanceDate),
+      receivedDate: new Date(receivedDate),
       receivedAmount: 0,
-      receivedDate: null,
-      remarks: { accounts: "", owner: "", approver: "" },
-      updatedBy: { accounts: null, owner: null, approver: null },
-      updatedAt: { accounts: null, owner: null, approver: null }
+      remarks: remarks || { accounts: "", owner: "", approver: "" },
+      updatedBy: { accounts: userId || null, owner: userId || null, approver: userId || null },
+      updatedAt: new Date()
     };
 
     eventTypeDoc.advances.push(newAdvance);
