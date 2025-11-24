@@ -2,8 +2,8 @@ const mongoose = require('mongoose');
 const Schema = mongoose.Schema;
 const ObjectId = Schema.Types.ObjectId;
 
-const pointSchema = new Schema({
-    checklistPoint: {
+const checklistItemSchema = new Schema({
+    checklistName: {
         type: String,
         required: true
     },
@@ -28,19 +28,26 @@ const pointSchema = new Schema({
         default: ''
     },
     quantity: {
-        type: Number,
+        type: String,
         required: false,
-        default: 0
-    },
-    numbers: {
-        type: Number,
-        required: false,
-        default: 0
+        default: ''
     },
     rate: {
-        type: Number,
+        type: String,
         required: false,
-        default: 0
+        default: ''
+    }
+}, { _id: false });
+
+const subHeadingSchema = new Schema({
+    subHeadingName: {
+        type: String,
+        required: true
+    },
+    checklists: {
+        type: [checklistItemSchema],
+        required: true,
+        default: []
     }
 }, { _id: false });
 
@@ -55,8 +62,8 @@ const checklistSchema = new Schema(
             required: false,
             default: ''
         },
-        points: {
-            type: [pointSchema],
+        subHeadings: {
+            type: [subHeadingSchema],
             required: true,
             default: []
         },

@@ -29,7 +29,7 @@ module.exports.createChecklist = async (req, res) => {
     // }
 
     try {
-        const { heading, eventReference, points, department } = req.body;
+        const { heading, eventReference, subHeadings, department } = req.body;
 
         // Validate required fields
         if (!heading || typeof heading !== 'string' || heading.trim().length === 0) {
@@ -39,21 +39,39 @@ module.exports.createChecklist = async (req, res) => {
             });
         }
 
-        if (!points || !Array.isArray(points) || points.length === 0) {
+        if (!subHeadings || !Array.isArray(subHeadings) || subHeadings.length === 0) {
             return res.status(STATUS.VALIDATION_FAILED).json({
-                message: 'Points array is required and must not be empty',
-                field: 'points'
+                message: 'SubHeadings array is required and must not be empty',
+                field: 'subHeadings'
             });
         }
 
-        // Validate each point object
-        for (let i = 0; i < points.length; i++) {
-            const point = points[i];
-            if (!point.checklistPoint || typeof point.checklistPoint !== 'string' || point.checklistPoint.trim().length === 0) {
+        // Validate each subHeading object
+        for (let i = 0; i < subHeadings.length; i++) {
+            const subHeading = subHeadings[i];
+            if (!subHeading.subHeadingName || typeof subHeading.subHeadingName !== 'string' || subHeading.subHeadingName.trim().length === 0) {
                 return res.status(STATUS.VALIDATION_FAILED).json({
-                    message: `Point ${i + 1}: checklistPoint is required`,
-                    field: `points[${i}].checklistPoint`
+                    message: `SubHeading ${i + 1}: subHeadingName is required`,
+                    field: `subHeadings[${i}].subHeadingName`
                 });
+            }
+
+            if (!subHeading.checklists || !Array.isArray(subHeading.checklists) || subHeading.checklists.length === 0) {
+                return res.status(STATUS.VALIDATION_FAILED).json({
+                    message: `SubHeading ${i + 1}: checklists array is required and must not be empty`,
+                    field: `subHeadings[${i}].checklists`
+                });
+            }
+
+            // Validate each checklist item
+            for (let j = 0; j < subHeading.checklists.length; j++) {
+                const checklist = subHeading.checklists[j];
+                if (!checklist.checklistName || typeof checklist.checklistName !== 'string' || checklist.checklistName.trim().length === 0) {
+                    return res.status(STATUS.VALIDATION_FAILED).json({
+                        message: `SubHeading ${i + 1}, Checklist ${j + 1}: checklistName is required`,
+                        field: `subHeadings[${i}].checklists[${j}].checklistName`
+                    });
+                }
             }
         }
 
@@ -72,23 +90,25 @@ module.exports.createChecklist = async (req, res) => {
             });
         }
 
-        // Process points - ensure all fields are properly formatted
-        const processedPoints = points.map(point => ({
-            checklistPoint: point.checklistPoint.trim(),
-            units: point.units ? String(point.units).trim() : '',
-            length: point.length ? String(point.length).trim() : '',
-            breadth: point.breadth ? String(point.breadth).trim() : '',
-            depth: point.depth ? String(point.depth).trim() : '',
-            quantity: point.quantity ? Number(point.quantity) : 0,
-            numbers: point.numbers ? Number(point.numbers) : 0,
-            rate: point.rate ? Number(point.rate) : 0
+        // Process subHeadings - ensure all fields are properly formatted
+        const processedSubHeadings = subHeadings.map(subHeading => ({
+            subHeadingName: subHeading.subHeadingName.trim(),
+            checklists: subHeading.checklists.map(checklist => ({
+                checklistName: checklist.checklistName.trim(),
+                units: checklist.units ? String(checklist.units).trim() : '',
+                length: checklist.length ? String(checklist.length).trim() : '',
+                breadth: checklist.breadth ? String(checklist.breadth).trim() : '',
+                depth: checklist.depth ? String(checklist.depth).trim() : '',
+                quantity: checklist.quantity ? String(checklist.quantity).trim() : '',
+                rate: checklist.rate ? String(checklist.rate).trim() : ''
+            }))
         }));
 
         // Create checklist
         const checklist = new Checklist({
             heading: heading.trim(),
             eventReference: eventReference ? eventReference.trim() : '',
-            points: processedPoints,
+            subHeadings: processedSubHeadings,
             department: department
         });
 
@@ -98,7 +118,7 @@ module.exports.createChecklist = async (req, res) => {
             id: savedChecklist.id,
             heading: savedChecklist.heading,
             eventReference: savedChecklist.eventReference,
-            points: savedChecklist.points,
+            subHeadings: savedChecklist.subHeadings,
             department: savedChecklist.department
         });
     } 
@@ -348,7 +368,7 @@ module.exports.updateChecklist = async (req, res) => {
 
     try{
         let { id } = req.params;
-        const { heading, eventReference, points, department } = req.body;
+        const { heading, eventReference, subHeadings, department } = req.body;
 
         const updateData = {};
 
@@ -366,35 +386,55 @@ module.exports.updateChecklist = async (req, res) => {
             updateData.eventReference = typeof eventReference === 'string' ? eventReference.trim() : '';
         }
 
-        if (points !== undefined) {
-            if (!Array.isArray(points) || points.length === 0) {
+        if (subHeadings !== undefined) {
+            if (!Array.isArray(subHeadings) || subHeadings.length === 0) {
                 return res.status(STATUS.VALIDATION_FAILED).json({
-                    message: 'Points must be a non-empty array',
-                    field: 'points'
+                    message: 'SubHeadings must be a non-empty array',
+                    field: 'subHeadings'
                 });
             }
 
-            // Validate each point object
-            for (let i = 0; i < points.length; i++) {
-                const point = points[i];
-                if (!point.checklistPoint || typeof point.checklistPoint !== 'string' || point.checklistPoint.trim().length === 0) {
+            // Validate each subHeading object
+            for (let i = 0; i < subHeadings.length; i++) {
+                const subHeading = subHeadings[i];
+                if (!subHeading.subHeadingName || typeof subHeading.subHeadingName !== 'string' || subHeading.subHeadingName.trim().length === 0) {
                     return res.status(STATUS.VALIDATION_FAILED).json({
-                        message: `Point ${i + 1}: checklistPoint is required`,
-                        field: `points[${i}].checklistPoint`
+                        message: `SubHeading ${i + 1}: subHeadingName is required`,
+                        field: `subHeadings[${i}].subHeadingName`
                     });
+                }
+
+                if (!subHeading.checklists || !Array.isArray(subHeading.checklists) || subHeading.checklists.length === 0) {
+                    return res.status(STATUS.VALIDATION_FAILED).json({
+                        message: `SubHeading ${i + 1}: checklists array is required and must not be empty`,
+                        field: `subHeadings[${i}].checklists`
+                    });
+                }
+
+                // Validate each checklist item
+                for (let j = 0; j < subHeading.checklists.length; j++) {
+                    const checklist = subHeading.checklists[j];
+                    if (!checklist.checklistName || typeof checklist.checklistName !== 'string' || checklist.checklistName.trim().length === 0) {
+                        return res.status(STATUS.VALIDATION_FAILED).json({
+                            message: `SubHeading ${i + 1}, Checklist ${j + 1}: checklistName is required`,
+                            field: `subHeadings[${i}].checklists[${j}].checklistName`
+                        });
+                    }
                 }
             }
 
-            // Process points - ensure all fields are properly formatted
-            updateData.points = points.map(point => ({
-                checklistPoint: point.checklistPoint.trim(),
-                units: point.units ? String(point.units).trim() : '',
-                length: point.length ? String(point.length).trim() : '',
-                breadth: point.breadth ? String(point.breadth).trim() : '',
-                depth: point.depth ? String(point.depth).trim() : '',
-                quantity: point.quantity ? Number(point.quantity) : 0,
-                numbers: point.numbers ? Number(point.numbers) : 0,
-                rate: point.rate ? Number(point.rate) : 0
+            // Process subHeadings - ensure all fields are properly formatted
+            updateData.subHeadings = subHeadings.map(subHeading => ({
+                subHeadingName: subHeading.subHeadingName.trim(),
+                checklists: subHeading.checklists.map(checklist => ({
+                    checklistName: checklist.checklistName.trim(),
+                    units: checklist.units ? String(checklist.units).trim() : '',
+                    length: checklist.length ? String(checklist.length).trim() : '',
+                    breadth: checklist.breadth ? String(checklist.breadth).trim() : '',
+                    depth: checklist.depth ? String(checklist.depth).trim() : '',
+                    quantity: checklist.quantity ? String(checklist.quantity).trim() : '',
+                    rate: checklist.rate ? String(checklist.rate).trim() : ''
+                }))
             }));
         }
 
@@ -431,7 +471,7 @@ module.exports.updateChecklist = async (req, res) => {
                 id: checklist.id,
                 heading: checklist.heading,
                 eventReference: checklist.eventReference,
-                points: checklist.points,
+                subHeadings: checklist.subHeadings,
                 department: checklist.department,
                 message: "Checklist Updated"
             });
