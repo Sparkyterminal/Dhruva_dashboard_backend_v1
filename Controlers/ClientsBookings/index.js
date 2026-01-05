@@ -236,11 +236,15 @@ exports.createEvent = async (req, res) => {
       for (let index = 0; index < eventTypes.length; index++) {
         const type = eventTypes[index];
 
-        // Resolve or create EventType master for this event
+        // Resolve or create EventType master for this event (optional)
         let eventTypeDoc = null;
-        let eventTypeId = type.eventTypeId;
+        let eventTypeId = type.eventTypeId || null;
 
-        if (eventTypeId) {
+        // Handle null values - if explicitly null, allow it
+        if (type.eventTypeId === null || type.eventType === null) {
+          eventTypeId = null;
+        } else if (eventTypeId) {
+          // If eventTypeId is provided and not null, validate and use it
           if (!mongoose.Types.ObjectId.isValid(eventTypeId)) {
             throw new Error(`eventTypes[${index}].eventTypeId must be a valid ID`);
           }
@@ -261,9 +265,8 @@ exports.createEvent = async (req, res) => {
             });
           }
           eventTypeId = eventTypeDoc._id;
-        } else {
-          throw new Error(`eventTypes[${index}].eventTypeId or eventTypes[${index}].eventType is required`);
         }
+        // If both are null/undefined, eventTypeId remains null (allowed)
 
         if (!type.startDate) {
           throw new Error(`eventTypes[${index}].startDate is required`);

@@ -34,7 +34,8 @@ const eventTypeSchema = new mongoose.Schema({
   eventType: { 
     type: mongoose.Schema.Types.ObjectId, 
     ref: "EventType", 
-    required: true 
+    required: false,
+    default: null
   },
   startDate: { type: Date, required: true },
   endDate: { type: Date, required: true },
