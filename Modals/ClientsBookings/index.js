@@ -40,6 +40,13 @@ const eventTypeSchema = new mongoose.Schema({
   endDate: { type: Date, required: true },
   venueLocation: { type: String, required: true },
   agreedAmount: { type: Number },
+  agreedAmountBreakup: {
+    accountAmount: { type: Number, default: 0 },
+    cashAmount: { type: Number, default: 0 },
+    accountGstRate: { type: Number, default: 0 },
+    accountGstAmount: { type: Number, default: 0 },
+    accountTotalWithGst: { type: Number, default: 0 }
+  },
   advances: { type: [advanceSchema], default: [] }
 });
 
@@ -57,8 +64,8 @@ const eventSchema = new mongoose.Schema({
   lead2: { type: String, default: "" },
   contactNumber: { type: String, required: true },
   altContactNumber: { type: String },
-  agreedAmount: { type: Number },
-  advances: { type: [advanceSchema], default: [] },
+  altContactName: { type: String },
+  note: { type: String },
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" }
 }, { timestamps: true });
 
