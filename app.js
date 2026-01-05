@@ -56,6 +56,7 @@ const vendorRoutes = require("./Routes/Vendor");
 const events = require("./Routes/ClientsBookings");
 const bills = require("./Routes/Bills");
 const checklistRoutes = require("./Routes/checklist");
+const eventNamesRoutes = require("./Routes/events");
 
 
 app.use(`${API_ROOT}department`, departmentRoutes);
@@ -66,6 +67,7 @@ app.use(`${API_ROOT}vendor`, vendorRoutes);
 app.use(`${API_ROOT}events`, events);
 app.use(`${API_ROOT}bills`, bills);
 app.use(`${API_ROOT}checklist`, checklistRoutes);
+app.use(`${API_ROOT}event-names`, eventNamesRoutes);
 
 
 
