@@ -236,86 +236,86 @@ exports.createEvent = async (req, res) => {
       for (let index = 0; index < eventTypes.length; index++) {
         const type = eventTypes[index];
 
-      // Resolve or create EventType master for this event
-      let eventTypeDoc = null;
-      let eventTypeId = type.eventTypeId;
+        // Resolve or create EventType master for this event
+        let eventTypeDoc = null;
+        let eventTypeId = type.eventTypeId;
 
-      if (eventTypeId) {
-        if (!mongoose.Types.ObjectId.isValid(eventTypeId)) {
-          throw new Error(`eventTypes[${index}].eventTypeId must be a valid ID`);
-        }
-        eventTypeDoc = await EventTypeModel.findById(eventTypeId);
-        if (!eventTypeDoc) {
-          throw new Error(`eventTypes[${index}].eventTypeId does not reference a valid event type`);
-        }
-      } else if (type.eventType && typeof type.eventType === "string" && type.eventType.trim()) {
-        // Fallback: use name + eventId to find or create the EventType master
-        eventTypeDoc = await EventTypeModel.findOne({
-          name: type.eventType.trim(),
-          event: eventId,
-        });
-        if (!eventTypeDoc) {
-          eventTypeDoc = await EventTypeModel.create({
+        if (eventTypeId) {
+          if (!mongoose.Types.ObjectId.isValid(eventTypeId)) {
+            throw new Error(`eventTypes[${index}].eventTypeId must be a valid ID`);
+          }
+          eventTypeDoc = await EventTypeModel.findById(eventTypeId);
+          if (!eventTypeDoc) {
+            throw new Error(`eventTypes[${index}].eventTypeId does not reference a valid event type`);
+          }
+        } else if (type.eventType && typeof type.eventType === "string" && type.eventType.trim()) {
+          // Fallback: use name + eventId to find or create the EventType master
+          eventTypeDoc = await EventTypeModel.findOne({
             name: type.eventType.trim(),
             event: eventId,
           });
-        }
-        eventTypeId = eventTypeDoc._id;
-      } else {
-        throw new Error(`eventTypes[${index}].eventTypeId or eventTypes[${index}].eventType is required`);
-      }
-
-      if (!type.startDate) {
-        throw new Error(`eventTypes[${index}].startDate is required`);
-      }
-      if (!type.endDate) {
-        throw new Error(`eventTypes[${index}].endDate is required`);
-      }
-      if (!type.venueLocation || !type.venueLocation.trim()) {
-        throw new Error(`eventTypes[${index}].venueLocation is required`);
-      }
-
-      const advancesArray = Array.isArray(type.advances) ? type.advances : [];
-
-      const advancesData = advancesArray.map((adv, advIndex) => {
-        if (adv.expectedAmount == null) {
-          throw new Error(`eventTypes[${index}].advances[${advIndex}].expectedAmount is required`);
-        }
-        if (!adv.advanceDate) {
-          throw new Error(`eventTypes[${index}].advances[${advIndex}].advanceDate is required`);
+          if (!eventTypeDoc) {
+            eventTypeDoc = await EventTypeModel.create({
+              name: type.eventType.trim(),
+              event: eventId,
+            });
+          }
+          eventTypeId = eventTypeDoc._id;
+        } else {
+          throw new Error(`eventTypes[${index}].eventTypeId or eventTypes[${index}].eventType is required`);
         }
 
-        const advanceNumber = adv.advanceNumber != null ? adv.advanceNumber : advIndex + 1;
+        if (!type.startDate) {
+          throw new Error(`eventTypes[${index}].startDate is required`);
+        }
+        if (!type.endDate) {
+          throw new Error(`eventTypes[${index}].endDate is required`);
+        }
+        if (!type.venueLocation || !type.venueLocation.trim()) {
+          throw new Error(`eventTypes[${index}].venueLocation is required`);
+        }
 
-        return {
-          advanceNumber,
-          expectedAmount: adv.expectedAmount,
-          advanceDate: new Date(adv.advanceDate),
-          receivedAmount: adv.receivedAmount || 0,
-          receivedDate: adv.receivedDate ? new Date(adv.receivedDate) : null,
-          remarks: adv.remarks || { accounts: "", owner: "", approver: "" },
-          updatedBy: adv.updatedBy || { accounts: null, owner: null, approver: null },
-          updatedAt: adv.updatedAt || { accounts: null, owner: null, approver: null }
-        };
-      });
+        const advancesArray = Array.isArray(type.advances) ? type.advances : [];
 
-      const breakup = type.agreedAmountBreakup || {};
+        const advancesData = advancesArray.map((adv, advIndex) => {
+          if (adv.expectedAmount == null) {
+            throw new Error(`eventTypes[${index}].advances[${advIndex}].expectedAmount is required`);
+          }
+          if (!adv.advanceDate) {
+            throw new Error(`eventTypes[${index}].advances[${advIndex}].advanceDate is required`);
+          }
 
-      eventTypesData.push({
-        eventType: eventTypeId,
-        startDate: new Date(type.startDate),
-        endDate: new Date(type.endDate),
-        venueLocation: type.venueLocation.trim(),
-        agreedAmount: type.agreedAmount != null ? type.agreedAmount : undefined,
-        agreedAmountBreakup: {
-          accountAmount: breakup.accountAmount ?? 0,
-          cashAmount: breakup.cashAmount ?? 0,
-          accountGstRate: breakup.accountGstRate ?? 0,
-          accountGstAmount: breakup.accountGstAmount ?? 0,
-          accountTotalWithGst: breakup.accountTotalWithGst ?? 0
-        },
-        advances: advancesData
-      });
+          const advanceNumber = adv.advanceNumber != null ? adv.advanceNumber : advIndex + 1;
+
+          return {
+            advanceNumber,
+            expectedAmount: adv.expectedAmount,
+            advanceDate: new Date(adv.advanceDate),
+            receivedAmount: adv.receivedAmount || 0,
+            receivedDate: adv.receivedDate ? new Date(adv.receivedDate) : null,
+            remarks: adv.remarks || { accounts: "", owner: "", approver: "" },
+            updatedBy: adv.updatedBy || { accounts: null, owner: null, approver: null },
+            updatedAt: adv.updatedAt || { accounts: null, owner: null, approver: null }
+          };
+        });
+
+        const breakup = type.agreedAmountBreakup || {};
+
+        eventTypesData.push({
+          eventType: eventTypeId,
+          startDate: new Date(type.startDate),
+          endDate: new Date(type.endDate),
+          venueLocation: type.venueLocation.trim(),
+          agreedAmount: type.agreedAmount != null ? type.agreedAmount : undefined,
+          agreedAmountBreakup: {
+            accountAmount: breakup.accountAmount ?? 0,
+            cashAmount: breakup.cashAmount ?? 0,
+            accountGstRate: breakup.accountGstRate ?? 0,
+            accountGstAmount: breakup.accountGstAmount ?? 0,
+            accountTotalWithGst: breakup.accountTotalWithGst ?? 0
+          },
+          advances: advancesData
+        });
       }
     }
 
