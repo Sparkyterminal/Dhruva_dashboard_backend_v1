@@ -22,6 +22,13 @@ router.get(
     eventTypeController.getAllEventTypes
 );
 
+// Get event types by event ID
+router.get(
+    "/event/:eventId",
+    // isAuth,
+    eventTypeController.getEventTypesByEventId
+);
+
 // Get single event type by ID
 router.get(
     "/:id",
