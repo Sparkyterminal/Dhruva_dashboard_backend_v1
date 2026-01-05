@@ -104,7 +104,9 @@ exports.getBills = async (req, res) => {
         month: s.month,
         year: s.year,
         paid: s.paid,
-        amount: bill.amount
+        amount: bill.amount,
+        remarks: s.remarks || '',
+        paymentMode: s.paymentMode || 'Cash'
       }));
 
       return {
