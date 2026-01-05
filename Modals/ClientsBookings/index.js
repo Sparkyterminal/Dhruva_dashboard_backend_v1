@@ -1,5 +1,6 @@
 
 const mongoose = require("mongoose");
+const EventName = require("../events");
 
 const advanceSchema = new mongoose.Schema({
   advanceNumber: { type: Number, required: true },
@@ -38,7 +39,11 @@ const eventTypeSchema = new mongoose.Schema({
 });
 
 const eventSchema = new mongoose.Schema({
-  eventName: { type: String, required: true },
+  eventName: { 
+    type: mongoose.Schema.Types.ObjectId, 
+    ref: "EventName", 
+    required: true 
+  },
   eventTypes: { type: [eventTypeSchema], required: true, default: [] },
   clientName: { type: String, required: true },
   brideName: { type: String },
