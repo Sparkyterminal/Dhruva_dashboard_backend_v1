@@ -136,6 +136,69 @@ module.exports.getAllEventTypes = async (req, res) => {
     }
 }
 
+// Get event types by event ID
+module.exports.getEventTypesByEventId = async (req, res) => {
+    const errors = validationResult(req);
+
+    if (!errors.isEmpty()) {
+        return res.status(STATUS.BAD_REQUEST).json({
+            message: `Bad request`,
+        });
+    }
+
+    // const token = req.get('Authorization');
+    // let decodedToken = await jwt.decode(token);
+
+    // if(decodedToken.role != "ADMIN"){
+    //     return res.status(STATUS.UNAUTHORISED).json({
+    //         message: MESSAGE.unauthorized,
+    //     });
+    // }
+
+    try {
+        const { eventId } = req.params;
+
+        // Validate event ID
+        if (!mongoose.Types.ObjectId.isValid(eventId)) {
+            return res.status(STATUS.BAD_REQUEST).json({
+                message: 'Invalid event ID',
+                field: 'eventId'
+            });
+        }
+
+        // Verify event exists
+        const eventExists = await EventName.findById(eventId);
+        if (!eventExists) {
+            return res.status(STATUS.NOT_FOUND).json({
+                message: 'Event not found',
+                field: 'eventId'
+            });
+        }
+
+        // Get all event types for this event
+        const eventTypes = await EventType.find({ event: eventId })
+            .populate('event', 'id name')
+            .sort({ name: 1 });
+
+        return res.status(STATUS.SUCCESS).json({
+            success: true,
+            event: {
+                id: eventExists.id,
+                name: eventExists.name
+            },
+            eventTypes,
+            count: eventTypes.length
+        });
+    } 
+    catch (error) {
+        console.log(error);
+        return res.status(STATUS.INTERNAL_SERVER_ERROR).json({
+            message: MESSAGE.internalServerError,
+            error: error.message,
+        });
+    }
+}
+
 // Get single event type by ID
 module.exports.getEventTypeById = async (req, res) => {
     const errors = validationResult(req);
