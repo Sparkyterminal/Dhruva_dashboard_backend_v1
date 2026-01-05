@@ -228,14 +228,13 @@ exports.createEvent = async (req, res) => {
       return res.status(400).json({ message: "contactNumber is required" });
     }
 
-    if (!Array.isArray(eventTypes) || eventTypes.length === 0) {
-      return res.status(400).json({ message: "eventTypes must be a non-empty array" });
-    }
-
     const eventTypesData = [];
 
-    for (let index = 0; index < eventTypes.length; index++) {
-      const type = eventTypes[index];
+    const hasEventTypes = Array.isArray(eventTypes) && eventTypes.length > 0;
+
+    if (hasEventTypes) {
+      for (let index = 0; index < eventTypes.length; index++) {
+        const type = eventTypes[index];
 
       // Resolve or create EventType master for this event
       let eventTypeDoc = null;
@@ -317,6 +316,7 @@ exports.createEvent = async (req, res) => {
         },
         advances: advancesData
       });
+      }
     }
 
     const event = new Event({
@@ -536,8 +536,8 @@ exports.editEventExceptReceivedAmount = async (req, res) => {
       advances
     } = req.body;
 
-    if (!eventName || !clientName || !contactNumber || !Array.isArray(eventTypes)) {
-      return res.status(400).json({ message: "eventName, clientName, contactNumber and eventTypes are required" });
+    if (!eventName || !clientName || !contactNumber) {
+      return res.status(400).json({ message: "eventName, clientName and contactNumber are required" });
     }
 
     const event = await Event.findById(eventId);
@@ -553,11 +553,12 @@ exports.editEventExceptReceivedAmount = async (req, res) => {
     event.lead2 = lead2 ? lead2.trim() : "";
     event.agreedAmount = agreedAmount != null ? agreedAmount : undefined;
 
-    event.eventTypes = eventTypes.map((type, index) => {
-      if (!type.eventType || !type.eventType.trim()) {
-        throw new Error(`eventTypes[${index}].eventType is required`);
-      }
-      const existingType = event.eventTypes.find(t => t.eventType === type.eventType);
+    if (Array.isArray(eventTypes) && eventTypes.length > 0) {
+      event.eventTypes = eventTypes.map((type, index) => {
+        if (!type.eventType || !type.eventType.trim()) {
+          throw new Error(`eventTypes[${index}].eventType is required`);
+        }
+        const existingType = event.eventTypes.find(t => t.eventType === type.eventType);
 
       const advancesArray = Array.isArray(type.advances) ? type.advances : [];
 
@@ -592,6 +593,7 @@ exports.editEventExceptReceivedAmount = async (req, res) => {
         advances
       };
     });
+    }
 
     if (Array.isArray(advances)) {
       event.advances = advances.map((adv, advIndex) => {
