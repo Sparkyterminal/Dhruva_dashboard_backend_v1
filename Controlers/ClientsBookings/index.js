@@ -237,14 +237,33 @@ exports.createEvent = async (req, res) => {
     for (let index = 0; index < eventTypes.length; index++) {
       const type = eventTypes[index];
 
-      const eventTypeId = type.eventTypeId || type.eventType;
-      if (!eventTypeId || !mongoose.Types.ObjectId.isValid(eventTypeId)) {
-        throw new Error(`eventTypes[${index}].eventTypeId is required and must be a valid ID`);
-      }
+      // Resolve or create EventType master for this event
+      let eventTypeDoc = null;
+      let eventTypeId = type.eventTypeId;
 
-      const eventTypeDoc = await EventTypeModel.findById(eventTypeId);
-      if (!eventTypeDoc) {
-        throw new Error(`eventTypes[${index}].eventTypeId does not reference a valid event type`);
+      if (eventTypeId) {
+        if (!mongoose.Types.ObjectId.isValid(eventTypeId)) {
+          throw new Error(`eventTypes[${index}].eventTypeId must be a valid ID`);
+        }
+        eventTypeDoc = await EventTypeModel.findById(eventTypeId);
+        if (!eventTypeDoc) {
+          throw new Error(`eventTypes[${index}].eventTypeId does not reference a valid event type`);
+        }
+      } else if (type.eventType && typeof type.eventType === "string" && type.eventType.trim()) {
+        // Fallback: use name + eventId to find or create the EventType master
+        eventTypeDoc = await EventTypeModel.findOne({
+          name: type.eventType.trim(),
+          event: eventId,
+        });
+        if (!eventTypeDoc) {
+          eventTypeDoc = await EventTypeModel.create({
+            name: type.eventType.trim(),
+            event: eventId,
+          });
+        }
+        eventTypeId = eventTypeDoc._id;
+      } else {
+        throw new Error(`eventTypes[${index}].eventTypeId or eventTypes[${index}].eventType is required`);
       }
 
       if (!type.startDate) {
