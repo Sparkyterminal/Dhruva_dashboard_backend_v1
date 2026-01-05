@@ -492,7 +492,10 @@ exports.addAdvanceToEventType = async (req, res) => {
 // Get event by ID, including advances
 exports.getEvent = async (req, res) => {
   try {
-    const event = await Event.findById(req.params.eventId);
+    const event = await Event.findById(req.params.eventId)
+      .populate('eventName', 'id name')
+      .populate('eventTypes.eventType', 'id name event');
+    
     if (!event) return res.status(404).json({ message: "Event not found" });
 
     res.status(200).json({ event });
@@ -506,6 +509,8 @@ exports.getEvent = async (req, res) => {
 exports.getAllEvents = async (req, res) => {
   try {
     const events = await Event.find()
+      .populate('eventName', 'id name')
+      .populate('eventTypes.eventType', 'id name event')
       .sort({ createdAt: -1 });  // latest events first
 
     const totalEvents = events.length;
