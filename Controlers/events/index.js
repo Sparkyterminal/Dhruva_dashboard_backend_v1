@@ -16,14 +16,14 @@ module.exports.createEvent = async (req, res) => {
         });
     }
 
-    const token = req.get('Authorization');
-    let decodedToken = await jwt.decode(token);
+    // const token = req.get('Authorization');
+    // let decodedToken = await jwt.decode(token);
 
-    if(decodedToken.role != "ADMIN"){
-        return res.status(STATUS.UNAUTHORISED).json({
-            message: MESSAGE.unauthorized,
-        });
-    }
+    // if(decodedToken.role != "ADMIN"){
+    //     return res.status(STATUS.UNAUTHORISED).json({
+    //         message: MESSAGE.unauthorized,
+    //     });
+    // }
 
     try {
         const { name } = req.body;
@@ -77,14 +77,14 @@ module.exports.getAllEvents = async (req, res) => {
         });
     }
 
-    const token = req.get('Authorization');
-    let decodedToken = await jwt.decode(token);
+    // const token = req.get('Authorization');
+    // let decodedToken = await jwt.decode(token);
 
-    if(decodedToken.role != "ADMIN"){
-        return res.status(STATUS.UNAUTHORISED).json({
-            message: MESSAGE.unauthorized,
-        });
-    }
+    // if(decodedToken.role != "ADMIN"){
+    //     return res.status(STATUS.UNAUTHORISED).json({
+    //         message: MESSAGE.unauthorized,
+    //     });
+    // }
 
     try {
         const events = await EventName.find().sort({ name: 1 });
@@ -113,14 +113,14 @@ module.exports.getEventById = async (req, res) => {
         });
     }
 
-    const token = req.get('Authorization');
-    let decodedToken = await jwt.decode(token);
+    // const token = req.get('Authorization');
+    // let decodedToken = await jwt.decode(token);
 
-    if(decodedToken.role != "ADMIN"){
-        return res.status(STATUS.UNAUTHORISED).json({
-            message: MESSAGE.unauthorized,
-        });
-    }
+    // if(decodedToken.role != "ADMIN"){
+    //     return res.status(STATUS.UNAUTHORISED).json({
+    //         message: MESSAGE.unauthorized,
+    //     });
+    // }
 
     try{
         let event = await EventName.findOne({ 
@@ -157,14 +157,14 @@ module.exports.updateEvent = async (req, res) => {
         });
     }
 
-    const token = req.get('Authorization');
-    let decodedToken = await jwt.decode(token);
+    // const token = req.get('Authorization');
+    // let decodedToken = await jwt.decode(token);
 
-    if(decodedToken.role != "ADMIN"){
-        return res.status(STATUS.UNAUTHORISED).json({
-            message: MESSAGE.unauthorized,
-        });
-    }
+    // if(decodedToken.role != "ADMIN"){
+    //     return res.status(STATUS.UNAUTHORISED).json({
+    //         message: MESSAGE.unauthorized,
+    //     });
+    // }
 
     try{
         let { id } = req.params;
@@ -225,14 +225,14 @@ module.exports.deleteEvent = async (req, res) => {
         });
     }
 
-    const token = req.get('Authorization');
-    let decodedToken = await jwt.decode(token);
+    // const token = req.get('Authorization');
+    // let decodedToken = await jwt.decode(token);
 
-    if(decodedToken.role != "ADMIN"){
-        return res.status(STATUS.UNAUTHORISED).json({
-            message: MESSAGE.unauthorized,
-        });
-    }
+    // if(decodedToken.role != "ADMIN"){
+    //     return res.status(STATUS.UNAUTHORISED).json({
+    //         message: MESSAGE.unauthorized,
+    //     });
+    // }
 
     try {
         let { id } = req.params;

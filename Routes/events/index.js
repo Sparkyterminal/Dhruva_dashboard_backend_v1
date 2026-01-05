@@ -7,7 +7,7 @@ const eventController = require('../../Controlers/events');
 // Create event
 router.post(
     "/",
-    isAuth,
+    // isAuth,
     [
         body('name').trim().not().isEmpty().withMessage('Event name is required')
     ],
@@ -17,21 +17,21 @@ router.post(
 // Get all events
 router.get(
     "/",
-    isAuth,
+    // isAuth,
     eventController.getAllEvents
 );
 
 // Get single event by ID
 router.get(
     "/:id",
-    isAuth,
+    // isAuth,
     eventController.getEventById
 );
 
 // Update event
 router.patch(
     "/:id",
-    isAuth,
+    // isAuth,
     [
         body('name').trim().not().isEmpty().withMessage('Event name is required')
     ],
@@ -41,7 +41,7 @@ router.patch(
 // Delete event
 router.delete(
     "/:id",
-    isAuth,
+    // isAuth,
     eventController.deleteEvent
 );
 
