@@ -130,27 +130,65 @@ exports.getBillById = async (req, res) => {
   }
 };
 
-// Update bill info and/or EMI payment status for current month/year
+// Update bill info and/or EMI payment status for specified month/year
 exports.updateBill = async (req, res) => {
   try {
-    const { name, emiType, emiDate, amount, paid } = req.body;
+    const { name, emiType, emiDate, amount, paid, month, year, remarks, paymentMode } = req.body;
 
     const bill = await Bill.findById(req.params.id);
     if (!bill) return res.status(404).json({ message: 'Bill not found' });
 
+    // Update basic bill fields
     if (name !== undefined) bill.name = name;
     if (emiType !== undefined) bill.emiType = emiType;
     if (emiDate !== undefined) bill.emiDate = emiDate;
     if (amount !== undefined) bill.amount = amount;
 
+    // Update EMI status if paid is provided
     if (paid !== undefined) {
-      const { month, year } = getMonthYear(new Date());
-      const index = bill.emiStatus.findIndex(s => s.month === month && s.year === year);
+      // Use provided month/year or default to current date
+      let targetMonth, targetYear;
+      if (month !== undefined && year !== undefined) {
+        targetMonth = parseInt(month, 10);
+        targetYear = parseInt(year, 10);
+        
+        // Validate month and year
+        if (targetMonth < 1 || targetMonth > 12) {
+          return res.status(400).json({ message: 'Month must be between 1 and 12' });
+        }
+        if (targetYear < 2000 || targetYear > 2100) {
+          return res.status(400).json({ message: 'Year must be a valid year' });
+        }
+      } else {
+        const current = getMonthYear(new Date());
+        targetMonth = current.month;
+        targetYear = current.year;
+      }
+
+      const index = bill.emiStatus.findIndex(s => s.month === targetMonth && s.year === targetYear);
 
       if (index >= 0) {
+        // Update existing status
         bill.emiStatus[index].paid = paid;
+        if (remarks !== undefined) {
+          bill.emiStatus[index].remarks = remarks || '';
+        }
+        if (paymentMode !== undefined) {
+          if (paymentMode !== 'Cash' && paymentMode !== 'Account') {
+            return res.status(400).json({ message: 'paymentMode must be either "Cash" or "Account"' });
+          }
+          bill.emiStatus[index].paymentMode = paymentMode;
+        }
       } else {
-        bill.emiStatus.push({ month, year, paid });
+        // Create new status entry
+        const newStatus = {
+          month: targetMonth,
+          year: targetYear,
+          paid: paid,
+          remarks: remarks || '',
+          paymentMode: paymentMode && (paymentMode === 'Cash' || paymentMode === 'Account') ? paymentMode : 'Cash'
+        };
+        bill.emiStatus.push(newStatus);
       }
     }
 

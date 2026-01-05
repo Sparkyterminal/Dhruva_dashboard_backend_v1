@@ -29,7 +29,9 @@ const mongoose = require('mongoose');
 const emiStatusSchema = new mongoose.Schema({
   month: { type: Number, required: true },  // 1-12
   year: { type: Number, required: true },   // full year e.g. 2025
-  paid: { type: Boolean, default: false }
+  paid: { type: Boolean, default: false },
+  remarks: { type: String, default: '' },
+  paymentMode: { type: String, enum: ['Cash', 'Account'], default: 'Cash' }
 }, {_id:false});
 
 const billSchema = new mongoose.Schema({
