@@ -1,6 +1,7 @@
 
 const mongoose = require("mongoose");
 const EventName = require("../events");
+const EventType = require("../eventTypes");
 
 const advanceSchema = new mongoose.Schema({
   advanceNumber: { type: Number, required: true },
@@ -30,7 +31,11 @@ const advanceSchema = new mongoose.Schema({
 }, { _id: false });
 
 const eventTypeSchema = new mongoose.Schema({
-  eventType: { type: String, required: true },
+  eventType: { 
+    type: mongoose.Schema.Types.ObjectId, 
+    ref: "EventType", 
+    required: true 
+  },
   startDate: { type: Date, required: true },
   endDate: { type: Date, required: true },
   venueLocation: { type: String, required: true },
