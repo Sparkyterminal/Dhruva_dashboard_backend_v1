@@ -180,6 +180,8 @@
 
 const jwt = require('jsonwebtoken');
 const Event = require("../../Modals/ClientsBookings");
+const EventName = require("../../Modals/events");
+const EventTypeModel = require("../../Modals/eventTypes");
 const STATUS = require("../../utils/statusCodes");
 const MESSAGE = require("../../utils/messages");
 const mongoose = require("mongoose");
@@ -196,21 +198,26 @@ const findEventTypeByIdentifier = (eventDoc, identifier) => {
 exports.createEvent = async (req, res) => {
   try {
     const {
-      eventName,
+      eventId,
       eventTypes,
       clientName,
       brideName,
       groomName,
       contactNumber,
-      agreedAmount,
-      advances,
       altContactNumber,
+      altContactName,
       lead1,
-      lead2
+      lead2,
+      note
     } = req.body;
 
-    if (!eventName || typeof eventName !== "string" || !eventName.trim()) {
-      return res.status(400).json({ message: "eventName is required" });
+    if (!eventId || !mongoose.Types.ObjectId.isValid(eventId)) {
+      return res.status(400).json({ message: "Valid eventId is required" });
+    }
+
+    const eventNameDoc = await EventName.findById(eventId);
+    if (!eventNameDoc) {
+      return res.status(404).json({ message: "Event not found for given eventId" });
     }
 
     if (!clientName || typeof clientName !== "string" || !clientName.trim()) {
@@ -225,10 +232,21 @@ exports.createEvent = async (req, res) => {
       return res.status(400).json({ message: "eventTypes must be a non-empty array" });
     }
 
-    const eventTypesData = eventTypes.map((type, index) => {
-      if (!type.eventType || !type.eventType.trim()) {
-        throw new Error(`eventTypes[${index}].eventType is required`);
+    const eventTypesData = [];
+
+    for (let index = 0; index < eventTypes.length; index++) {
+      const type = eventTypes[index];
+
+      const eventTypeId = type.eventTypeId || type.eventType;
+      if (!eventTypeId || !mongoose.Types.ObjectId.isValid(eventTypeId)) {
+        throw new Error(`eventTypes[${index}].eventTypeId is required and must be a valid ID`);
       }
+
+      const eventTypeDoc = await EventTypeModel.findById(eventTypeId);
+      if (!eventTypeDoc) {
+        throw new Error(`eventTypes[${index}].eventTypeId does not reference a valid event type`);
+      }
+
       if (!type.startDate) {
         throw new Error(`eventTypes[${index}].startDate is required`);
       }
@@ -238,6 +256,7 @@ exports.createEvent = async (req, res) => {
       if (!type.venueLocation || !type.venueLocation.trim()) {
         throw new Error(`eventTypes[${index}].venueLocation is required`);
       }
+
       const advancesArray = Array.isArray(type.advances) ? type.advances : [];
 
       const advancesData = advancesArray.map((adv, advIndex) => {
@@ -262,39 +281,27 @@ exports.createEvent = async (req, res) => {
         };
       });
 
-      return {
-        eventType: type.eventType.trim(),
+      const breakup = type.agreedAmountBreakup || {};
+
+      eventTypesData.push({
+        eventType: eventTypeId,
         startDate: new Date(type.startDate),
         endDate: new Date(type.endDate),
         venueLocation: type.venueLocation.trim(),
         agreedAmount: type.agreedAmount != null ? type.agreedAmount : undefined,
+        agreedAmountBreakup: {
+          accountAmount: breakup.accountAmount ?? 0,
+          cashAmount: breakup.cashAmount ?? 0,
+          accountGstRate: breakup.accountGstRate ?? 0,
+          accountGstAmount: breakup.accountGstAmount ?? 0,
+          accountTotalWithGst: breakup.accountTotalWithGst ?? 0
+        },
         advances: advancesData
-      };
-    });
-
-    const sharedAdvances = Array.isArray(advances)
-      ? advances.map((adv, advIndex) => {
-          if (adv.expectedAmount == null) {
-            throw new Error(`advances[${advIndex}].expectedAmount is required`);
-          }
-          if (!adv.advanceDate) {
-            throw new Error(`advances[${advIndex}].advanceDate is required`);
-          }
-          return {
-            advanceNumber: adv.advanceNumber != null ? adv.advanceNumber : advIndex + 1,
-            expectedAmount: adv.expectedAmount,
-            advanceDate: new Date(adv.advanceDate),
-            receivedAmount: adv.receivedAmount || 0,
-            receivedDate: adv.receivedDate ? new Date(adv.receivedDate) : null,
-            remarks: adv.remarks || { accounts: "", owner: "", approver: "" },
-            updatedBy: adv.updatedBy || { accounts: null, owner: null, approver: null },
-            updatedAt: adv.updatedAt || { accounts: null, owner: null, approver: null }
-          };
-        })
-      : [];
+      });
+    }
 
     const event = new Event({
-      eventName: eventName.trim(),
+      eventName: eventId,
       eventTypes: eventTypesData,
       clientName: clientName.trim(),
       brideName: brideName ? brideName.trim() : undefined,
@@ -302,9 +309,9 @@ exports.createEvent = async (req, res) => {
       lead1: lead1 ? lead1.trim() : "",
       lead2: lead2 ? lead2.trim() : "",
       contactNumber: contactNumber.trim(),
-      agreedAmount: agreedAmount != null ? agreedAmount : undefined,
-      advances: sharedAdvances,
-      altContactNumber: altContactNumber ? altContactNumber.trim() : undefined
+      altContactNumber: altContactNumber ? altContactNumber.trim() : undefined,
+      altContactName: altContactName ? altContactName.trim() : undefined,
+      note: note ? note.trim() : undefined
     });
 
     await event.save();
