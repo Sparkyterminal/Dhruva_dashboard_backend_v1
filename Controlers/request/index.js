@@ -37,7 +37,8 @@ module.exports.createRequest = async (req, res) => {
             priority,
             note,
             transation_in,
-            vendor
+            vendor,
+            event_reference
         } = req.body;
 
         // Validate amount
@@ -73,6 +74,26 @@ module.exports.createRequest = async (req, res) => {
             departmentId = user.department.department[0];
         }
 
+        // Validate event_reference if provided
+        if (event_reference && !mongoose.Types.ObjectId.isValid(event_reference)) {
+            return res.status(STATUS.VALIDATION_FAILED).json({
+                message: 'Invalid event_reference ID',
+                field: 'event_reference'
+            });
+        }
+
+        // Verify event exists if event_reference is provided
+        if (event_reference) {
+            const Event = require("../../Modals/ClientsBookings");
+            const eventExists = await Event.findById(event_reference);
+            if (!eventExists) {
+                return res.status(STATUS.NOT_FOUND).json({
+                    message: 'Event not found for given event_reference',
+                    field: 'event_reference'
+                });
+            }
+        }
+
         const request = new Request({
             purpose: purpose.trim(),
             // due_date: dueDateObj,
@@ -83,7 +104,8 @@ module.exports.createRequest = async (req, res) => {
             department: departmentId,
             status: 'PENDING',
             transation_in: transation_in || 'CASH',
-            vendor: vendor || null
+            vendor: vendor || null,
+            event_reference: event_reference || null
         });
 
         const savedRequest = await request.save();
@@ -98,7 +120,8 @@ module.exports.createRequest = async (req, res) => {
                 priority: savedRequest.priority,
                 status: savedRequest.status,
                 transation_in: savedRequest.transation_in,
-                vendor: savedRequest.vendor
+                vendor: savedRequest.vendor,
+                event_reference: savedRequest.event_reference
             }
         });
     } catch (error) {
@@ -135,6 +158,7 @@ module.exports.getMyRequests = async (req, res) => {
             .limit(size)
             .populate('department', 'id name')
             .populate('vendor', 'id name')
+            .populate('event_reference', 'id clientName eventName')
             .exec();
 
         return res.status(STATUS.SUCCESS).json({
@@ -167,6 +191,7 @@ module.exports.getMyRequestById = async (req, res) => {
             .populate('requested_by', 'id first_name last_name')
             .populate('department', 'id name')
             .populate('vendor', 'id name')
+            .populate('event_reference', 'id clientName eventName')
             .exec();
 
         if (!request) {
@@ -274,6 +299,7 @@ module.exports.getAllRequests = async (req, res) => {
         .populate('requested_by', 'id first_name last_name email_data designation')
         .populate('department', 'id name')
         .populate('vendor', 'id name')
+        .populate('event_reference', 'id clientName eventName')
         .exec();
   
       return res.status(STATUS.SUCCESS).json({
@@ -410,6 +436,7 @@ module.exports.getRequestById = async (req, res) => {
             .populate('department', 'id name')
             // .populate('handled_by', 'id first_name last_name')
             .populate('vendor', 'id name')
+            .populate('event_reference', 'id clientName eventName')
             .exec();
 
         if (!request) {
@@ -536,6 +563,7 @@ module.exports.updateRequest = async (req, res) => {
             .populate('requested_by', 'id first_name last_name email_data designation')
             .populate('department', 'id name')
             .populate('vendor', 'id name')
+            .populate('event_reference', 'id clientName eventName')
             .exec();
 
         return res.status(STATUS.SUCCESS).json({
@@ -688,6 +716,7 @@ module.exports.archiveRequest = async (req, res) => {
             .populate('department', 'id name')
             // .populate('handled_by', 'id first_name last_name')
             .populate('vendor', 'id name')
+            .populate('event_reference', 'id clientName eventName')
             .exec();
 
         return res.status(STATUS.SUCCESS).json({
@@ -824,6 +853,7 @@ module.exports.getRequests = async (req, res) => {
         .populate('department', 'id name')
         //.populate('handled_by', 'id first_name last_name')
         .populate('vendor', 'id name')
+        .populate('event_reference', 'id clientName eventName')
         .exec();
   
       return res.status(STATUS.SUCCESS).json({
@@ -859,6 +889,7 @@ exports.getRequestsByDepartmentId = async (req, res) => {
         .populate('requested_by', 'id first_name last_name email_data designation')
         .populate('department', 'id name')
         .populate('vendor', 'id name')
+        .populate('event_reference', 'id clientName eventName')
         .exec();
 
         if (!requests.length) {

@@ -92,6 +92,11 @@ const requestSchema = new Schema(
             ref: 'vendor',
             required: false
         },
+        event_reference: {
+            type: ObjectId,
+            ref: 'Event',
+            required: false
+        },
         handled_by: {
             type: ObjectId,
             ref: 'user',
