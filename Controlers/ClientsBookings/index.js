@@ -337,6 +337,11 @@ exports.createEvent = async (req, res) => {
     });
 
     await event.save();
+    
+    // Populate eventName and eventType before returning
+    await event.populate('eventName', 'id name');
+    await event.populate('eventTypes.eventType', 'id name event');
+    
     res.status(201).json({ message: "Event created", event });
   } catch (error) {
     console.error(error);
@@ -400,7 +405,11 @@ exports.updateAdvance = async (req, res) => {
 
     await event.save();
 
-    res.status(200).json({ message: "Advance updated", advance });
+    // Populate eventName and eventType before returning
+    await event.populate('eventName', 'id name');
+    await event.populate('eventTypes.eventType', 'id name event');
+
+    res.status(200).json({ message: "Advance updated", event, advance });
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: "Server error" });
@@ -478,8 +487,13 @@ exports.addAdvanceToEventType = async (req, res) => {
 
     await event.save();
 
+    // Populate eventName and eventType before returning
+    await event.populate('eventName', 'id name');
+    await event.populate('eventTypes.eventType', 'id name event');
+
     return res.status(200).json({
       message: "Advance updated successfully",
+      event,
       eventType: eventTypeDoc.eventType,
       advance
     });
@@ -531,96 +545,168 @@ exports.editEventExceptReceivedAmount = async (req, res) => {
   try {
     const { eventId } = req.params;
     const {
-      eventName,
+      eventId: newEventId,
       eventTypes,
       clientName,
       brideName,
       groomName,
       contactNumber,
       altContactNumber,
+      altContactName,
       lead1,
       lead2,
-      agreedAmount,
-      advances
+      note
     } = req.body;
 
-    if (!eventName || !clientName || !contactNumber) {
-      return res.status(400).json({ message: "eventName, clientName and contactNumber are required" });
+    if (!clientName || typeof clientName !== "string" || !clientName.trim()) {
+      return res.status(400).json({ message: "clientName is required" });
+    }
+
+    if (!contactNumber || typeof contactNumber !== "string" || !contactNumber.trim()) {
+      return res.status(400).json({ message: "contactNumber is required" });
     }
 
     const event = await Event.findById(eventId);
     if (!event) return res.status(404).json({ message: "Event not found" });
 
-    event.eventName = eventName.trim();
+    // Update eventId if provided
+    if (newEventId) {
+      if (!mongoose.Types.ObjectId.isValid(newEventId)) {
+        return res.status(400).json({ message: "Valid eventId is required" });
+      }
+      const eventNameDoc = await EventName.findById(newEventId);
+      if (!eventNameDoc) {
+        return res.status(404).json({ message: "Event not found for given eventId" });
+      }
+      event.eventName = newEventId;
+    }
+
+    // Update basic fields
     event.clientName = clientName.trim();
     event.brideName = brideName ? brideName.trim() : undefined;
     event.groomName = groomName ? groomName.trim() : undefined;
     event.contactNumber = contactNumber.trim();
     event.altContactNumber = altContactNumber ? altContactNumber.trim() : undefined;
+    event.altContactName = altContactName ? altContactName.trim() : undefined;
     event.lead1 = lead1 ? lead1.trim() : "";
     event.lead2 = lead2 ? lead2.trim() : "";
-    event.agreedAmount = agreedAmount != null ? agreedAmount : undefined;
+    event.note = note ? note.trim() : undefined;
 
-    if (Array.isArray(eventTypes) && eventTypes.length > 0) {
-      event.eventTypes = eventTypes.map((type, index) => {
-        if (!type.eventType || !type.eventType.trim()) {
-          throw new Error(`eventTypes[${index}].eventType is required`);
+    // Update eventTypes if provided
+    const hasEventTypes = Array.isArray(eventTypes) && eventTypes.length > 0;
+    if (hasEventTypes) {
+      const eventTypesData = [];
+      const currentEventId = newEventId || event.eventName;
+
+      for (let index = 0; index < eventTypes.length; index++) {
+        const type = eventTypes[index];
+
+        // Resolve or create EventType master for this event (optional)
+        let eventTypeDoc = null;
+        let eventTypeId = type.eventTypeId || null;
+
+        // Handle null values - if explicitly null, allow it
+        if (type.eventTypeId === null || type.eventType === null) {
+          eventTypeId = null;
+        } else if (eventTypeId) {
+          // If eventTypeId is provided and not null, validate and use it
+          if (!mongoose.Types.ObjectId.isValid(eventTypeId)) {
+            throw new Error(`eventTypes[${index}].eventTypeId must be a valid ID`);
+          }
+          eventTypeDoc = await EventTypeModel.findById(eventTypeId);
+          if (!eventTypeDoc) {
+            throw new Error(`eventTypes[${index}].eventTypeId does not reference a valid event type`);
+          }
+        } else if (type.eventType && typeof type.eventType === "string" && type.eventType.trim()) {
+          // Fallback: use name + eventId to find or create the EventType master
+          eventTypeDoc = await EventTypeModel.findOne({
+            name: type.eventType.trim(),
+            event: currentEventId,
+          });
+          if (!eventTypeDoc) {
+            eventTypeDoc = await EventTypeModel.create({
+              name: type.eventType.trim(),
+              event: currentEventId,
+            });
+          }
+          eventTypeId = eventTypeDoc._id;
         }
-        const existingType = event.eventTypes.find(t => t.eventType === type.eventType);
+        // If both are null/undefined, eventTypeId remains null (allowed)
 
-      const advancesArray = Array.isArray(type.advances) ? type.advances : [];
-
-      const advances = advancesArray.map((adv, advIndex) => {
-        let advanceNumber = adv.advanceNumber != null ? adv.advanceNumber : advIndex + 1;
-        const existingAdvance = existingType
-          ? existingType.advances.find(a => a.advanceNumber === advanceNumber)
+        // Find existing eventType to preserve receivedAmount in advances
+        const existingType = eventTypeId 
+          ? event.eventTypes.find(et => 
+              et.eventType && et.eventType.toString() === eventTypeId.toString()
+            )
           : null;
 
-        if (adv.advanceNumber == null && existingAdvance && existingAdvance.advanceNumber != null) {
-          advanceNumber = existingAdvance.advanceNumber;
+        if (!type.startDate) {
+          throw new Error(`eventTypes[${index}].startDate is required`);
+        }
+        if (!type.endDate) {
+          throw new Error(`eventTypes[${index}].endDate is required`);
+        }
+        if (!type.venueLocation || !type.venueLocation.trim()) {
+          throw new Error(`eventTypes[${index}].venueLocation is required`);
         }
 
-        return {
-          advanceNumber,
-          expectedAmount: adv.expectedAmount,
-          advanceDate: adv.advanceDate ? new Date(adv.advanceDate) : (existingAdvance ? existingAdvance.advanceDate : null),
-          receivedAmount: existingAdvance ? existingAdvance.receivedAmount : 0,
-          receivedDate: existingAdvance ? existingAdvance.receivedDate : null,
-          remarks: existingAdvance ? existingAdvance.remarks : { accounts: "", owner: "", approver: "" },
-          updatedBy: existingAdvance ? existingAdvance.updatedBy : { accounts: null, owner: null, approver: null },
-          updatedAt: existingAdvance ? existingAdvance.updatedAt : { accounts: null, owner: null, approver: null },
-        };
-      });
+        const advancesArray = Array.isArray(type.advances) ? type.advances : [];
 
-      return {
-        eventType: type.eventType.trim(),
-        startDate: type.startDate ? new Date(type.startDate) : (existingType ? existingType.startDate : null),
-        endDate: type.endDate ? new Date(type.endDate) : (existingType ? existingType.endDate : null),
-        venueLocation: type.venueLocation ? type.venueLocation.trim() : (existingType ? existingType.venueLocation : ""),
-        agreedAmount: type.agreedAmount != null ? type.agreedAmount : (existingType ? existingType.agreedAmount : 0),
-        advances
-      };
-    });
-    }
+        const advancesData = advancesArray.map((adv, advIndex) => {
+          if (adv.expectedAmount == null) {
+            throw new Error(`eventTypes[${index}].advances[${advIndex}].expectedAmount is required`);
+          }
+          if (!adv.advanceDate) {
+            throw new Error(`eventTypes[${index}].advances[${advIndex}].advanceDate is required`);
+          }
 
-    if (Array.isArray(advances)) {
-      event.advances = advances.map((adv, advIndex) => {
-        const advanceNumber = adv.advanceNumber != null ? adv.advanceNumber : advIndex + 1;
-        const existingAdvance = event.advances.find(a => a.advanceNumber === advanceNumber);
-        return {
-          advanceNumber,
-          expectedAmount: adv.expectedAmount,
-          advanceDate: adv.advanceDate ? new Date(adv.advanceDate) : (existingAdvance ? existingAdvance.advanceDate : null),
-          receivedAmount: existingAdvance ? existingAdvance.receivedAmount : 0,
-          receivedDate: existingAdvance ? existingAdvance.receivedDate : null,
-          remarks: existingAdvance ? existingAdvance.remarks : { accounts: "", owner: "", approver: "" },
-          updatedBy: existingAdvance ? existingAdvance.updatedBy : { accounts: null, owner: null, approver: null },
-          updatedAt: existingAdvance ? existingAdvance.updatedAt : { accounts: null, owner: null, approver: null },
-        };
-      });
+          const advanceNumber = adv.advanceNumber != null ? adv.advanceNumber : advIndex + 1;
+          
+          // Find existing advance to preserve receivedAmount and related fields
+          const existingAdvance = existingType
+            ? existingType.advances.find(a => a.advanceNumber === advanceNumber)
+            : null;
+
+          return {
+            advanceNumber,
+            expectedAmount: adv.expectedAmount,
+            advanceDate: new Date(adv.advanceDate),
+            receivedAmount: existingAdvance ? existingAdvance.receivedAmount : (adv.receivedAmount || 0),
+            receivedDate: existingAdvance ? existingAdvance.receivedDate : (adv.receivedDate ? new Date(adv.receivedDate) : null),
+            remarks: existingAdvance ? existingAdvance.remarks : (adv.remarks || { accounts: "", owner: "", approver: "" }),
+            updatedBy: existingAdvance ? existingAdvance.updatedBy : (adv.updatedBy || { accounts: null, owner: null, approver: null }),
+            updatedAt: existingAdvance ? existingAdvance.updatedAt : (adv.updatedAt || { accounts: null, owner: null, approver: null })
+          };
+        });
+
+        const breakup = type.agreedAmountBreakup || {};
+        const existingBreakup = existingType?.agreedAmountBreakup || {};
+
+        eventTypesData.push({
+          eventType: eventTypeId,
+          startDate: new Date(type.startDate),
+          endDate: new Date(type.endDate),
+          venueLocation: type.venueLocation.trim(),
+          agreedAmount: type.agreedAmount != null ? type.agreedAmount : undefined,
+          agreedAmountBreakup: {
+            accountAmount: breakup.accountAmount ?? existingBreakup.accountAmount ?? 0,
+            cashAmount: breakup.cashAmount ?? existingBreakup.cashAmount ?? 0,
+            accountGstRate: breakup.accountGstRate ?? existingBreakup.accountGstRate ?? 0,
+            accountGstAmount: breakup.accountGstAmount ?? existingBreakup.accountGstAmount ?? 0,
+            accountTotalWithGst: breakup.accountTotalWithGst ?? existingBreakup.accountTotalWithGst ?? 0
+          },
+          advances: advancesData
+        });
+      }
+
+      event.eventTypes = eventTypesData;
     }
 
     await event.save();
+
+    // Populate eventName and eventType before returning
+    await event.populate('eventName', 'id name');
+    await event.populate('eventTypes.eventType', 'id name event');
 
     res.status(200).json({ message: "Event updated (received fields preserved)", event });
   } catch (error) {
