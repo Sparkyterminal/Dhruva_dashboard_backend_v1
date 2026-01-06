@@ -157,7 +157,7 @@ module.exports.getMyRequests = async (req, res) => {
             .skip((page - 1) * size)
             .limit(size)
             .populate('department', 'id name')
-            .populate('vendor', 'id name')
+            .populate('vendor', 'id name vendor_code')
             .populate({
                 path: 'event_reference',
                 select: 'id clientName',
