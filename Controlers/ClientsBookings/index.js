@@ -197,6 +197,16 @@ const findEventTypeByIdentifier = (eventDoc, identifier) => {
 // Create new event with event types & advances
 exports.createEvent = async (req, res) => {
   try {
+    const token = req.get('Authorization');
+    if (!token) {
+      return res.status(401).json({ message: "Authorization token required" });
+    }
+
+    const decodedToken = jwt.decode(token);
+    if (!decodedToken || !decodedToken.uid) {
+      return res.status(401).json({ message: "Invalid token" });
+    }
+
     const {
       eventId,
       eventTypes,
@@ -333,7 +343,8 @@ exports.createEvent = async (req, res) => {
       contactNumber: contactNumber.trim(),
       altContactNumber: altContactNumber ? altContactNumber.trim() : undefined,
       altContactName: altContactName ? altContactName.trim() : undefined,
-      note: note ? note.trim() : undefined
+      note: note ? note.trim() : undefined,
+      createdBy: decodedToken.uid
     });
 
     await event.save();
@@ -341,6 +352,7 @@ exports.createEvent = async (req, res) => {
     // Populate eventName and eventType before returning
     await event.populate('eventName', 'id name');
     await event.populate('eventTypes.eventType', 'id name event');
+    await event.populate('createdBy', 'id first_name last_name');
     
     res.status(201).json({ message: "Event created", event });
   } catch (error) {
@@ -506,11 +518,29 @@ exports.addAdvanceToEventType = async (req, res) => {
 // Get event by ID, including advances
 exports.getEvent = async (req, res) => {
   try {
+    const token = req.get('Authorization');
+    if (!token) {
+      return res.status(401).json({ message: "Authorization token required" });
+    }
+
+    const decodedToken = jwt.decode(token);
+    if (!decodedToken || !decodedToken.uid) {
+      return res.status(401).json({ message: "Invalid token" });
+    }
+
     const event = await Event.findById(req.params.eventId)
       .populate('eventName', 'id name')
-      .populate('eventTypes.eventType', 'id name event');
+      .populate('eventTypes.eventType', 'id name event')
+      .populate('createdBy', 'id first_name last_name');
     
     if (!event) return res.status(404).json({ message: "Event not found" });
+
+    // Check if user has access (owner or ADMIN/OWNER can see all)
+    if (decodedToken.role !== 'ADMIN' && decodedToken.role !== 'OWNER') {
+      if (event.createdBy && event.createdBy.toString() !== decodedToken.uid) {
+        return res.status(403).json({ message: "Access denied. You can only view your own events." });
+      }
+    }
 
     res.status(200).json({ event });
   } catch (error) {
@@ -522,9 +552,26 @@ exports.getEvent = async (req, res) => {
 
 exports.getAllEvents = async (req, res) => {
   try {
-    const events = await Event.find()
+    const token = req.get('Authorization');
+    if (!token) {
+      return res.status(401).json({ message: "Authorization token required" });
+    }
+
+    const decodedToken = jwt.decode(token);
+    if (!decodedToken || !decodedToken.uid) {
+      return res.status(401).json({ message: "Invalid token" });
+    }
+
+    // Build query - filter by user unless ADMIN or OWNER
+    let query = {};
+    if (decodedToken.role !== 'ADMIN' && decodedToken.role !== 'OWNER') {
+      query.createdBy = decodedToken.uid;
+    }
+
+    const events = await Event.find(query)
       .populate('eventName', 'id name')
       .populate('eventTypes.eventType', 'id name event')
+      .populate('createdBy', 'id first_name last_name')
       .sort({ createdAt: -1 });  // latest events first
 
     const totalEvents = events.length;
@@ -543,6 +590,16 @@ exports.getAllEvents = async (req, res) => {
 // Edit event details except receivedAmount in advances
 exports.editEventExceptReceivedAmount = async (req, res) => {
   try {
+    const token = req.get('Authorization');
+    if (!token) {
+      return res.status(401).json({ message: "Authorization token required" });
+    }
+
+    const decodedToken = jwt.decode(token);
+    if (!decodedToken || !decodedToken.uid) {
+      return res.status(401).json({ message: "Invalid token" });
+    }
+
     const { eventId } = req.params;
     const {
       eventId: newEventId,
@@ -568,6 +625,13 @@ exports.editEventExceptReceivedAmount = async (req, res) => {
 
     const event = await Event.findById(eventId);
     if (!event) return res.status(404).json({ message: "Event not found" });
+
+    // Check if user has access (owner or ADMIN/OWNER can edit all)
+    if (decodedToken.role !== 'ADMIN' && decodedToken.role !== 'OWNER') {
+      if (event.createdBy && event.createdBy.toString() !== decodedToken.uid) {
+        return res.status(403).json({ message: "Access denied. You can only edit your own events." });
+      }
+    }
 
     // Update eventId if provided
     if (newEventId) {
@@ -707,6 +771,7 @@ exports.editEventExceptReceivedAmount = async (req, res) => {
     // Populate eventName and eventType before returning
     await event.populate('eventName', 'id name');
     await event.populate('eventTypes.eventType', 'id name event');
+    await event.populate('createdBy', 'id first_name last_name');
 
     res.status(200).json({ message: "Event updated (received fields preserved)", event });
   } catch (error) {
