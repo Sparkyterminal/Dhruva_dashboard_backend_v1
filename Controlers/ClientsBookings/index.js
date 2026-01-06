@@ -563,10 +563,10 @@ exports.getAllEvents = async (req, res) => {
     }
 
     // Build query - filter by user unless ADMIN or OWNER
-    let query = {};
-    if (decodedToken.role !== 'ADMIN' && decodedToken.role !== 'OWNER') {
-      query.createdBy = decodedToken.uid;
-    }
+    // let query = {};
+    // if (decodedToken.role !== 'ADMIN' && decodedToken.role !== 'OWNER') {
+    //   query.createdBy = decodedToken.uid;
+    // }
 
     const events = await Event.find(query)
       .populate('eventName', 'id name')
