@@ -158,7 +158,14 @@ module.exports.getMyRequests = async (req, res) => {
             .limit(size)
             .populate('department', 'id name')
             .populate('vendor', 'id name')
-            .populate('event_reference', 'id clientName name')
+            .populate({
+                path: 'event_reference',
+                select: 'id clientName',
+                populate: {
+                    path: 'eventName',
+                    select: 'id name'
+                }
+            })
             .exec();
 
         return res.status(STATUS.SUCCESS).json({
@@ -191,7 +198,14 @@ module.exports.getMyRequestById = async (req, res) => {
             .populate('requested_by', 'id first_name last_name')
             .populate('department', 'id name')
             .populate('vendor', 'id name')
-            .populate('event_reference', 'id clientName name')
+            .populate({
+                path: 'event_reference',
+                select: 'id clientName',
+                populate: {
+                    path: 'eventName',
+                    select: 'id name'
+                }
+            })
             .exec();
 
         if (!request) {
@@ -436,7 +450,14 @@ module.exports.getRequestById = async (req, res) => {
             .populate('department', 'id name')
             // .populate('handled_by', 'id first_name last_name')
             .populate('vendor', 'id name vendor_code')
-            .populate('event_reference', 'id clientName name')
+            .populate({
+                path: 'event_reference',
+                select: 'id clientName',
+                populate: {
+                    path: 'eventName',
+                    select: 'id name'
+                }
+            })
             .exec();
 
         if (!request) {
@@ -563,7 +584,14 @@ module.exports.updateRequest = async (req, res) => {
             .populate('requested_by', 'id first_name last_name email_data designation')
             .populate('department', 'id name')
             .populate('vendor', 'id name')
-            .populate('event_reference', 'id clientName name')
+            .populate({
+                path: 'event_reference',
+                select: 'id clientName',
+                populate: {
+                    path: 'eventName',
+                    select: 'id name'
+                }
+            })
             .exec();
 
         return res.status(STATUS.SUCCESS).json({
@@ -716,7 +744,14 @@ module.exports.archiveRequest = async (req, res) => {
             .populate('department', 'id name')
             // .populate('handled_by', 'id first_name last_name')
             .populate('vendor', 'id name')
-            .populate('event_reference', 'id clientName name')
+            .populate({
+                path: 'event_reference',
+                select: 'id clientName',
+                populate: {
+                    path: 'eventName',
+                    select: 'id name'
+                }
+            })
             .exec();
 
         return res.status(STATUS.SUCCESS).json({
