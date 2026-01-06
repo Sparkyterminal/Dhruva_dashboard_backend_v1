@@ -39,7 +39,7 @@ router.get("/my-events", isAuth, eventController.getMyEvents);
 router.get("/:eventId", isAuth, eventController.getEvent);
 
 // Get all events with pagination
-router.get("/", isAuth, eventController.getAllEvents);
+router.get("/", eventController.getAllEvents);
 
 // Edit event details except receivedAmount in advances
 router.put("/:eventId/edit", isAuth, eventController.editEventExceptReceivedAmount);
