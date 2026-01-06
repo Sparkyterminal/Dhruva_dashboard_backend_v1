@@ -552,15 +552,15 @@ exports.getEvent = async (req, res) => {
 
 exports.getAllEvents = async (req, res) => {
   try {
-    const token = req.get('Authorization');
-    if (!token) {
-      return res.status(401).json({ message: "Authorization token required" });
-    }
+    // const token = req.get('Authorization');
+    // if (!token) {
+    //   return res.status(401).json({ message: "Authorization token required" });
+    // }
 
-    const decodedToken = jwt.decode(token);
-    if (!decodedToken || !decodedToken.uid) {
-      return res.status(401).json({ message: "Invalid token" });
-    }
+    // const decodedToken = jwt.decode(token);
+    // if (!decodedToken || !decodedToken.uid) {
+    //   return res.status(401).json({ message: "Invalid token" });
+    // }
 
     // Build query - filter by user unless ADMIN or OWNER
     // let query = {};
