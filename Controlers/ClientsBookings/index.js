@@ -562,11 +562,8 @@ exports.getAllEvents = async (req, res) => {
     //   return res.status(401).json({ message: "Invalid token" });
     // }
 
-    // Build query - filter by user unless ADMIN or OWNER
-    // let query = {};
-    // if (decodedToken.role !== 'ADMIN' && decodedToken.role !== 'OWNER') {
-    //   query.createdBy = decodedToken.uid;
-    // }
+    // Currently returns all events (no user-based filtering)
+    const query = {};
 
     const events = await Event.find(query)
       .populate('eventName', 'id name')
