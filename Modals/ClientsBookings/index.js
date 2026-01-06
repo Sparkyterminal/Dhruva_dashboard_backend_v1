@@ -67,7 +67,7 @@ const eventSchema = new mongoose.Schema({
   altContactNumber: { type: String },
   altContactName: { type: String },
   note: { type: String },
-  createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" }
+  createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "user" }
 }, { timestamps: true });
 
 const Event = mongoose.model("Event", eventSchema);

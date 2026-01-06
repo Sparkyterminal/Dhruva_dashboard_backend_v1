@@ -20,25 +20,26 @@
 
 const express = require("express");
 const router = express.Router();
+const isAuth = require("../../authentication/is-auth");
 const eventController = require("../../Controlers/ClientsBookings");
 
 // Create new event
-router.post("/", eventController.createEvent);
+router.post("/", isAuth, eventController.createEvent);
 
 // Update advance received amount and remarks by role
-router.patch("/:eventId/advances/:advanceNumber", eventController.updateAdvance);
+router.patch("/:eventId/advances/:advanceNumber", isAuth, eventController.updateAdvance);
 
 // Add/Update advance to a specific event type
-router.patch("/:eventId/event-types/:eventTypeId/advances/:advanceNumber", eventController.addAdvanceToEventType);
+router.patch("/:eventId/event-types/:eventTypeId/advances/:advanceNumber", isAuth, eventController.addAdvanceToEventType);
 
 // Get event details by ID
-router.get("/:eventId", eventController.getEvent);
+router.get("/:eventId", isAuth, eventController.getEvent);
 
 // Get all events with pagination
-router.get("/", eventController.getAllEvents);
+router.get("/", isAuth, eventController.getAllEvents);
 
 // Edit event details except receivedAmount in advances
-router.put("/:eventId/edit", eventController.editEventExceptReceivedAmount);
+router.put("/:eventId/edit", isAuth, eventController.editEventExceptReceivedAmount);
 
 module.exports = router;
 
