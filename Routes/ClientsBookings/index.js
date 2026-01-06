@@ -41,5 +41,8 @@ router.get("/", isAuth, eventController.getAllEvents);
 // Edit event details except receivedAmount in advances
 router.put("/:eventId/edit", isAuth, eventController.editEventExceptReceivedAmount);
 
+// Get my events
+router.get("/my-events", isAuth, eventController.getMyEvents);
+
 module.exports = router;
 

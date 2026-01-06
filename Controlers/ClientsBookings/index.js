@@ -587,6 +587,43 @@ exports.getAllEvents = async (req, res) => {
 };
 
 
+
+exports.getMyEvents = async (req, res) => {      
+  try {
+    const token = req.get('Authorization');
+    if (!token) {
+      return res.status(401).json({ message: "Authorization token required" });
+    }
+
+    const decodedToken = jwt.decode(token);
+    if (!decodedToken || !decodedToken.uid) {
+      return res.status(401).json({ message: "Invalid token" });
+    }
+
+    const events = await Event.find({ createdBy: decodedToken.uid })
+      .populate('eventName', 'id name')
+      .populate('eventTypes.eventType', 'id name event')
+      .populate('createdBy', 'id first_name last_name')
+      .sort({ createdAt: -1 });  // latest events first
+
+    return res.status(STATUS.SUCCESS).json({
+      success: true,
+      events: events,
+      message: "Events fetched successfully"
+    });
+  } catch (error) {
+    console.error(error);
+    return res.status(STATUS.INTERNAL_SERVER_ERROR).json({
+      success: false,
+      message: MESSAGE.internalServerError,
+      error: error.message
+    });
+  }
+};
+
+
+
+
 // Edit event details except receivedAmount in advances
 exports.editEventExceptReceivedAmount = async (req, res) => {
   try {
