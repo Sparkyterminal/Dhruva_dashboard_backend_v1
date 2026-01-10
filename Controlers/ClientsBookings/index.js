@@ -536,11 +536,11 @@ exports.getEvent = async (req, res) => {
     if (!event) return res.status(404).json({ message: "Event not found" });
 
     // Check if user has access (owner or ADMIN/OWNER can see all)
-    if (decodedToken.role !== 'ADMIN' && decodedToken.role !== 'OWNER') {
-      if (event.createdBy && event.createdBy.toString() !== decodedToken.uid) {
-        return res.status(403).json({ message: "Access denied. You can only view your own events." });
-      }
-    }
+    // if (decodedToken.role !== 'ADMIN' && decodedToken.role !== 'OWNER') {
+    //   if (event.createdBy && event.createdBy.toString() !== decodedToken.uid) {
+    //     return res.status(403).json({ message: "Access denied. You can only view your own events." });
+    //   }
+    // }
 
     res.status(200).json({ event });
   } catch (error) {
