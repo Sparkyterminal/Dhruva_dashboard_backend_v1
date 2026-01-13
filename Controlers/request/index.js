@@ -32,7 +32,7 @@ module.exports.createRequest = async (req, res) => {
     try {
         const {
             purpose,
-            // due_date,
+            required_date,
             amount,
             priority,
             note,
@@ -49,14 +49,17 @@ module.exports.createRequest = async (req, res) => {
             });
         }
 
-        // Validate due date
-        // const dueDateObj = new Date(due_date);
-        // if (isNaN(dueDateObj.getTime())) {
-        //     return res.status(STATUS.VALIDATION_FAILED).json({
-        //         message: 'Invalid due date format',
-        //         field: 'due_date'
-        //     });
-        // }
+        // Validate required_date if provided
+        let requiredDateObj = null;
+        if (required_date) {
+            requiredDateObj = new Date(required_date);
+            if (isNaN(requiredDateObj.getTime())) {
+                return res.status(STATUS.VALIDATION_FAILED).json({
+                    message: 'Invalid required_date format',
+                    field: 'required_date'
+                });
+            }
+        }
 
         // Get user to fetch their department
         const User = require("../../Modals/User");
@@ -96,7 +99,7 @@ module.exports.createRequest = async (req, res) => {
 
         const request = new Request({
             purpose: purpose.trim(),
-            // due_date: dueDateObj,
+            required_date: requiredDateObj,
             amount: parseFloat(amount),
             priority: priority || 'MEDIUM',
             note: note ? note.trim() : '',
@@ -116,7 +119,7 @@ module.exports.createRequest = async (req, res) => {
                 id: savedRequest.id,
                 purpose: savedRequest.purpose,
                 amount: savedRequest.amount,
-                //  due_date: savedRequest.due_date,
+                required_date: savedRequest.required_date,
                 priority: savedRequest.priority,
                 status: savedRequest.status,
                 transation_in: savedRequest.transation_in,
@@ -142,6 +145,11 @@ module.exports.getMyRequests = async (req, res) => {
         const size = parseInt(req.query.size) || 10;
         const status = req.query.status;
 
+        // Date filter inputs for required_date
+        const requiredDateSingle = req.query.required_date ? new Date(req.query.required_date) : null;
+        const requiredDateStart = req.query.required_date_start ? new Date(req.query.required_date_start) : null;
+        const requiredDateEnd = req.query.required_date_end ? new Date(req.query.required_date_end) : null;
+
         let query = { 
             requested_by: decodedToken.uid,
             is_archived: false 
@@ -149,6 +157,21 @@ module.exports.getMyRequests = async (req, res) => {
 
         if (status) {
             query.status = status;
+        }
+
+        // Required date filtering logic
+        if (requiredDateSingle) {
+            const startOfDay = new Date(requiredDateSingle);
+            startOfDay.setHours(0, 0, 0, 0);
+            const endOfDay = new Date(requiredDateSingle);
+            endOfDay.setHours(23, 59, 59, 999);
+            query.required_date = { $gte: startOfDay, $lte: endOfDay };
+        } else if (requiredDateStart && requiredDateEnd) {
+            query.required_date = { $gte: requiredDateStart, $lte: requiredDateEnd };
+        } else if (requiredDateStart) {
+            query.required_date = { $gte: requiredDateStart };
+        } else if (requiredDateEnd) {
+            query.required_date = { $lte: requiredDateEnd };
         }
 
         const documentCount = await Request.countDocuments(query);
@@ -256,6 +279,11 @@ module.exports.getAllRequests = async (req, res) => {
       const startDate = req.query.startDate ? new Date(req.query.startDate) : null;
       const endDate = req.query.endDate ? new Date(req.query.endDate) : null;
   
+      // Required date filter inputs
+      const requiredDateSingle = req.query.required_date ? new Date(req.query.required_date) : null;
+      const requiredDateStart = req.query.required_date_start ? new Date(req.query.required_date_start) : null;
+      const requiredDateEnd = req.query.required_date_end ? new Date(req.query.required_date_end) : null;
+  
       let query = { is_archived: false };
   
       // Apply filters
@@ -263,7 +291,7 @@ module.exports.getAllRequests = async (req, res) => {
       if (priority) query.priority = priority;
       if (department) query.department = department;
   
-      // Date filtering logic
+      // Date filtering logic for createdAt
       if (singleDate) {
         const startOfDay = new Date(singleDate);
         startOfDay.setHours(0, 0, 0, 0);
@@ -278,6 +306,21 @@ module.exports.getAllRequests = async (req, res) => {
         query.createdAt = { $gte: startDate };
       } else if (endDate) {
         query.createdAt = { $lte: endDate };
+      }
+
+      // Required date filtering logic
+      if (requiredDateSingle) {
+        const startOfDay = new Date(requiredDateSingle);
+        startOfDay.setHours(0, 0, 0, 0);
+        const endOfDay = new Date(requiredDateSingle);
+        endOfDay.setHours(23, 59, 59, 999);
+        query.required_date = { $gte: startOfDay, $lte: endOfDay };
+      } else if (requiredDateStart && requiredDateEnd) {
+        query.required_date = { $gte: requiredDateStart, $lte: requiredDateEnd };
+      } else if (requiredDateStart) {
+        query.required_date = { $gte: requiredDateStart };
+      } else if (requiredDateEnd) {
+        query.required_date = { $lte: requiredDateEnd };
       }
   
       // Search filter in multiple fields, including department name
@@ -495,6 +538,7 @@ module.exports.updateRequest = async (req, res) => {
             status,
             amount_paid,
             planned_amount,
+            approver_amount,
             remarks,
             is_active
         } = req.body;
@@ -558,6 +602,23 @@ module.exports.updateRequest = async (req, res) => {
                 });
             }
             updateData.planned_amount = plannedAmt;
+        }
+
+        // Only APPROVER role can set approver_amount
+        if (approver_amount !== undefined) {
+            if (decodedToken.role !== 'APPROVER') {
+                return res.status(STATUS.UNAUTHORISED).json({
+                    message: 'Only APPROVER role can set approver_amount',
+                });
+            }
+            const approverAmt = parseFloat(approver_amount);
+            if (isNaN(approverAmt) || approverAmt < 0) {
+                return res.status(STATUS.VALIDATION_FAILED).json({
+                    message: 'Invalid approver amount',
+                    field: 'approver_amount'
+                });
+            }
+            updateData.approver_amount = approverAmt;
         }
 
         if (remarks !== undefined) {
@@ -846,13 +907,18 @@ module.exports.getRequests = async (req, res) => {
       const endDate = req.query.endDate ? new Date(req.query.endDate) : null;
       const singleDate = req.query.date ? new Date(req.query.date) : null;
   
+      // Required date filter inputs
+      const requiredDateSingle = req.query.required_date ? new Date(req.query.required_date) : null;
+      const requiredDateStart = req.query.required_date_start ? new Date(req.query.required_date_start) : null;
+      const requiredDateEnd = req.query.required_date_end ? new Date(req.query.required_date_end) : null;
+  
       let query = { is_archived: false };
   
       if (status) query.status = status;
       if (priority) query.priority = priority;
       if (department) query.department = department;
   
-      // Date filtering
+      // Date filtering for createdAt
       if (singleDate) {
         const startOfDay = new Date(singleDate);
         startOfDay.setHours(0, 0, 0, 0);
@@ -867,6 +933,21 @@ module.exports.getRequests = async (req, res) => {
         query.createdAt = { $gte: startDate };
       } else if (endDate) {
         query.createdAt = { $lte: endDate };
+      }
+
+      // Required date filtering logic
+      if (requiredDateSingle) {
+        const startOfDay = new Date(requiredDateSingle);
+        startOfDay.setHours(0, 0, 0, 0);
+        const endOfDay = new Date(requiredDateSingle);
+        endOfDay.setHours(23, 59, 59, 999);
+        query.required_date = { $gte: startOfDay, $lte: endOfDay };
+      } else if (requiredDateStart && requiredDateEnd) {
+        query.required_date = { $gte: requiredDateStart, $lte: requiredDateEnd };
+      } else if (requiredDateStart) {
+        query.required_date = { $gte: requiredDateStart };
+      } else if (requiredDateEnd) {
+        query.required_date = { $lte: requiredDateEnd };
       }
   
       // Search filter

@@ -14,7 +14,8 @@ router.post(
         body('transation_in').isIn(['CASH','ACCOUNT']),
         body('vendor').optional({ nullable: true }).isMongoId(),
         body('event_reference').optional({ nullable: true }).isMongoId(),
-        body('priority').isIn(['HIGH', 'MEDIUM', 'LOW'])
+        body('priority').isIn(['HIGH', 'MEDIUM', 'LOW']),
+        body('required_date').optional({ nullable: true }).isISO8601().toDate()
     ],
     requestController.createRequest
 );

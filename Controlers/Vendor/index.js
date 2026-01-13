@@ -355,6 +355,8 @@ exports.createVendor = async (req, res) => {
     gst_no,
     msmed_no,
     pan_no,
+    adhar_no,
+    specify_cat,
     bank_name,
     beneficiary_name,
     bank_address_1,
@@ -418,6 +420,14 @@ exports.createVendor = async (req, res) => {
     }
   }
 
+  // Validate specify_cat if provided
+  if (specify_cat && !['cash', 'account', 'cash_and_account'].includes(specify_cat)) {
+    return res.status(STATUS.VALIDATION_FAILED).json({
+      message: 'Invalid specify_cat. Must be: cash, account, or cash_and_account',
+      field: 'specify_cat'
+    });
+  }
+
 //   if (!vendor_type || !['MATERIAL', 'LABOUR', 'COMPOSITE', 'EXPENSES'].includes(vendor_type)) {
 //     return res.status(STATUS.VALIDATION_FAILED).json({
 //       message: 'Invalid vendor type',
@@ -455,6 +465,8 @@ exports.createVendor = async (req, res) => {
     gst_no: gst_no ? gst_no.trim() : '',
     msmed_no: msmed_no ? msmed_no.trim() : '',
     pan_no: pan_no ? pan_no.trim() : '',
+    adhar_no: adhar_no ? adhar_no.trim() : '',
+    specify_cat: specify_cat || null,
     bank_name: bank_name ? bank_name.trim() : '',
     beneficiary_name: beneficiary_name ? beneficiary_name.trim() : '',
     bank_address_1: bank_address_1 ? bank_address_1.trim() : '',
@@ -556,6 +568,21 @@ exports.updateVendor = async (req, res) => {
     // Trim refered_by field if it exists
     if (updatedData.refered_by && typeof updatedData.refered_by === 'string') {
       updatedData.refered_by = updatedData.refered_by.trim();
+    }
+
+    // Trim adhar_no if provided
+    if (updatedData.adhar_no !== undefined) {
+      updatedData.adhar_no = updatedData.adhar_no ? updatedData.adhar_no.trim() : '';
+    }
+
+    // Validate specify_cat if provided
+    if (updatedData.specify_cat !== undefined) {
+      if (updatedData.specify_cat && !['cash', 'account', 'cash_and_account'].includes(updatedData.specify_cat)) {
+        return res.status(STATUS.VALIDATION_FAILED).json({
+          message: 'Invalid specify_cat. Must be: cash, account, or cash_and_account',
+          field: 'specify_cat'
+        });
+      }
     }
 
     // Validate department if provided
