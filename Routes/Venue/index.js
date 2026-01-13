@@ -7,7 +7,7 @@ const venueController = require('../../Controlers/Venue');
 // Create venue
 router.post(
     "/",
-    isAuth,
+    // isAuth,
     [
         body('name').trim().not().isEmpty().withMessage('Venue name is required')
     ],
@@ -17,21 +17,21 @@ router.post(
 // Get all venues
 router.get(
     "/",
-    isAuth,
+    // isAuth,
     venueController.getAllVenues
 );
 
 // Get single venue by ID
 router.get(
     "/:id",
-    isAuth,
+    // isAuth,
     venueController.getVenueById
 );
 
 // Update venue
 router.patch(
     "/:id",
-    isAuth,
+    // isAuth,
     [
         body('name').trim().not().isEmpty().withMessage('Venue name is required')
     ],
@@ -41,7 +41,7 @@ router.patch(
 // Delete venue
 router.delete(
     "/:id",
-    isAuth,
+    // isAuth,
     venueController.deleteVenue
 );
 

@@ -7,7 +7,7 @@ const subVenueLocationController = require('../../Controlers/SubVenueLocation');
 // Create sub venue location
 router.post(
     "/",
-    isAuth,
+    // isAuth,
     [
         body('name').trim().not().isEmpty().withMessage('Sub venue location name is required'),
         body('venue').not().isEmpty().withMessage('Venue ID is required')
@@ -18,28 +18,28 @@ router.post(
 // Get all sub venue locations
 router.get(
     "/",
-    isAuth,
+    // isAuth,
     subVenueLocationController.getAllSubVenueLocations
 );
 
 // Get sub venue locations by venue ID
 router.get(
     "/venue/:venueId",
-    isAuth,
+    // isAuth,
     subVenueLocationController.getSubVenueLocationsByVenueId
 );
 
 // Get single sub venue location by ID
 router.get(
     "/:id",
-    isAuth,
+    // isAuth,
     subVenueLocationController.getSubVenueLocationById
 );
 
 // Update sub venue location
 router.patch(
     "/:id",
-    isAuth,
+    // isAuth,
     [
         body('name').trim().not().isEmpty().withMessage('Sub venue location name is required')
     ],
@@ -49,7 +49,7 @@ router.patch(
 // Delete sub venue location
 router.delete(
     "/:id",
-    isAuth,
+    // isAuth,
     subVenueLocationController.deleteSubVenueLocation
 );
 
