@@ -598,9 +598,9 @@ module.exports.updateRequest = async (req, res) => {
 
         // Only APPROVER role can set approver_amount
         if (approver_amount !== undefined) {
-            if (decodedToken.role !== 'APPROVER') {
+            if (!['OWNER', 'APPROVER'].includes(decodedToken.role)) {
                 return res.status(STATUS.UNAUTHORISED).json({
-                    message: 'Only APPROVER role can set approver_amount',
+                    message: 'Only OWNER and APPROVER roles can set approver_amount',
                 });
             }
             const approverAmt = parseFloat(approver_amount);
