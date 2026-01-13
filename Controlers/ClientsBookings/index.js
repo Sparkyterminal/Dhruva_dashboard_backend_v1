@@ -571,6 +571,8 @@ exports.getEvent = async (req, res) => {
     const event = await Event.findById(req.params.eventId)
       .populate('eventName', 'id name')
       .populate('eventTypes.eventType', 'id name event')
+      .populate('lead1', 'id name contact_number email')
+      .populate('lead2', 'id name contact_number email')
       .populate('createdBy', 'id first_name last_name');
     
     if (!event) return res.status(404).json({ message: "Event not found" });
@@ -608,6 +610,8 @@ exports.getAllEvents = async (req, res) => {
     const events = await Event.find(query)
       .populate('eventName', 'id name')
       .populate('eventTypes.eventType', 'id name event')
+      .populate('lead1', 'id name contact_number email')
+      .populate('lead2', 'id name contact_number email')
       .populate('createdBy', 'id first_name last_name')
       .sort({ createdAt: -1 });  // latest events first
 
@@ -640,6 +644,8 @@ exports.getMyEvents = async (req, res) => {
     const events = await Event.find({ createdBy: decodedToken.uid })
       .populate('eventName', 'id name')
       .populate('eventTypes.eventType', 'id name event')
+      .populate('lead1', 'id name contact_number email')
+      .populate('lead2', 'id name contact_number email')
       .populate('createdBy', 'id first_name last_name')
       .sort({ createdAt: -1 });  // latest events first
 
