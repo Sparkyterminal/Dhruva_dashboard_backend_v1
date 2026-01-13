@@ -58,6 +58,9 @@ const bills = require("./Routes/Bills");
 const checklistRoutes = require("./Routes/checklist");
 const eventNamesRoutes = require("./Routes/events");
 const eventTypesRoutes = require("./Routes/eventTypes");
+const coordinatorsRoutes = require("./Routes/Coordinators");
+const venueRoutes = require("./Routes/Venue");
+const subVenueLocationRoutes = require("./Routes/SubVenueLocation");
 
 
 app.use(`${API_ROOT}department`, departmentRoutes);
@@ -70,6 +73,9 @@ app.use(`${API_ROOT}bills`, bills);
 app.use(`${API_ROOT}checklist`, checklistRoutes);
 app.use(`${API_ROOT}event-names`, eventNamesRoutes);
 app.use(`${API_ROOT}event-types`, eventTypesRoutes);
+app.use(`${API_ROOT}coordinators`, coordinatorsRoutes);
+app.use(`${API_ROOT}venue`, venueRoutes);
+app.use(`${API_ROOT}sub-venue-location`, subVenueLocationRoutes);
 
 
 
