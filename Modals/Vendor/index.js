@@ -218,6 +218,15 @@ const vendorSchema = new Schema(
       type: String,
       required: false
     },
+    adhar_no: {
+      type: String,
+      required: false
+    },
+    specify_cat: {
+      type: String,
+      enum: ['cash', 'account', 'cash_and_account'],
+      required: false
+    },
     bank_name: {
       type: String,
       required: false
@@ -267,7 +276,7 @@ const vendorSchema = new Schema(
     vendor_belongs_to: {
       type: ObjectId,
       ref: 'user',
-      required: true
+      required: false
     }
   },
   {

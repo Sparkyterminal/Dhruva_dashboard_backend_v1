@@ -9,10 +9,10 @@ const requestSchema = new Schema(
             required: true,
             trim: true
         },
-        // due_date: {
-        //     type: Date,
-        //     required: true
-        // },
+        required_date: {
+            type: Date,
+            required: false
+        },
         amount: {
             type: Number,
             required: true,
@@ -63,6 +63,11 @@ const requestSchema = new Schema(
             min: 0
         },
         planned_amount:{
+            type: Number,
+            default: 0,
+            min: 0
+        },
+        approver_amount: {
             type: Number,
             default: 0,
             min: 0
