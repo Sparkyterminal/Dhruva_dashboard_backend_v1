@@ -287,24 +287,31 @@ const User = require('../../Modals/User');
 const Department = require('../../Modals/Department');
 const mongoose = require('mongoose');
 
-const generateVendorCode = async () => {
-  const lastVendor = await Vendor.findOne({ vendor_code: { $exists: true, $ne: null } })
+const generateVendorCode = async (specify_cat) => {
+  const prefixMap = {
+    account: 'A-SBE',
+    cash: 'C-SBE',
+    cash_and_account: 'AC-SBE'
+  };
+
+  const basePrefix = prefixMap[specify_cat] || 'SBE';
+  const regex = new RegExp(`^${basePrefix}-?(\\d+)$`, 'i');
+
+  const lastVendor = await Vendor.findOne({ vendor_code: { $regex: `^${basePrefix}-`, $options: 'i' } })
     .sort({ createdAt: -1 })
     .select('vendor_code')
     .lean();
 
   let nextNumber = 1;
   if (lastVendor && lastVendor.vendor_code) {
-    const match = lastVendor.vendor_code.match(/sbe-(\d+)/i);
+    const match = lastVendor.vendor_code.match(regex);
     if (match && !Number.isNaN(parseInt(match[1], 10))) {
       nextNumber = parseInt(match[1], 10) + 1;
     }
-  } else {
-    const totalVendors = await Vendor.countDocuments();
-    nextNumber = totalVendors + 1;
   }
 
-  return `sbe-${nextNumber}`;
+  const paddedNumber = String(nextNumber).padStart(2, '0');
+  return `${basePrefix}-${paddedNumber}`;
 };
 
 // Create vendor
@@ -435,7 +442,7 @@ exports.createVendor = async (req, res) => {
 //     });
 //   }
 
-  const vendor_code = await generateVendorCode();
+  const vendor_code = await generateVendorCode(specify_cat);
 
   // Construct vendor object
   const vendorData = {
