@@ -182,6 +182,7 @@ const jwt = require('jsonwebtoken');
 const Event = require("../../Modals/ClientsBookings");
 const EventName = require("../../Modals/events");
 const EventTypeModel = require("../../Modals/eventTypes");
+const Coordinator = require("../../Modals/Coordinators");
 const STATUS = require("../../utils/statusCodes");
 const MESSAGE = require("../../utils/messages");
 const mongoose = require("mongoose");
@@ -287,6 +288,19 @@ exports.createEvent = async (req, res) => {
           throw new Error(`eventTypes[${index}].endDate is required`);
         }
 
+        // Validate coordinator if provided
+        let coordinatorId = null;
+        if (type.coordinator) {
+          if (!mongoose.Types.ObjectId.isValid(type.coordinator)) {
+            throw new Error(`eventTypes[${index}].coordinator must be a valid coordinator ID`);
+          }
+          const coordinatorExists = await Coordinator.findById(type.coordinator);
+          if (!coordinatorExists || coordinatorExists.is_archived) {
+            throw new Error(`eventTypes[${index}].coordinator references a coordinator that does not exist`);
+          }
+          coordinatorId = type.coordinator;
+        }
+
         const advancesArray = Array.isArray(type.advances) ? type.advances : [];
 
         const advancesData = advancesArray.map((adv, advIndex) => {
@@ -334,6 +348,7 @@ exports.createEvent = async (req, res) => {
           endDate: new Date(type.endDate),
           venueLocation: type.venueLocation || null,
           subVenueLocation: type.subVenueLocation || null,
+          coordinator: coordinatorId,
           agreedAmount: agreedAmount,
           accountAmount: accountAmount,
           accountGst: accountGst,
@@ -367,6 +382,11 @@ exports.createEvent = async (req, res) => {
     // Populate eventName, eventType, leads, and venue details before returning
     await event.populate('eventName', 'id name');
     await event.populate('eventTypes.eventType', 'id name event');
+    await event.populate('eventTypes.venueLocation', 'id name address city state');
+    await event.populate('eventTypes.subVenueLocation', 'id name venue');
+    await event.populate('eventTypes.coordinator', 'id name contact_number email');
+    await event.populate('lead1', 'id name contact_number email');
+    await event.populate('lead2', 'id name contact_number email');
     await event.populate('createdBy', 'id first_name last_name');
     
     res.status(201).json({ message: "Event created", event });
@@ -451,6 +471,11 @@ exports.updateAdvance = async (req, res) => {
     // Populate eventName, eventType, leads, and venue details before returning
     await event.populate('eventName', 'id name');
     await event.populate('eventTypes.eventType', 'id name event');
+    await event.populate('eventTypes.venueLocation', 'id name address city state');
+    await event.populate('eventTypes.subVenueLocation', 'id name venue');
+    await event.populate('eventTypes.coordinator', 'id name contact_number email');
+    await event.populate('lead1', 'id name contact_number email');
+    await event.populate('lead2', 'id name contact_number email');
 
     res.status(200).json({ message: "Advance updated", event, advance });
   } catch (error) {
@@ -542,6 +567,11 @@ exports.addAdvanceToEventType = async (req, res) => {
     // Populate eventName, eventType, leads, and venue details before returning
     await event.populate('eventName', 'id name');
     await event.populate('eventTypes.eventType', 'id name event');
+    await event.populate('eventTypes.venueLocation', 'id name address city state');
+    await event.populate('eventTypes.subVenueLocation', 'id name venue');
+    await event.populate('eventTypes.coordinator', 'id name contact_number email');
+    await event.populate('lead1', 'id name contact_number email');
+    await event.populate('lead2', 'id name contact_number email');
 
     return res.status(200).json({
       message: "Advance updated successfully",
@@ -571,6 +601,9 @@ exports.getEvent = async (req, res) => {
     const event = await Event.findById(req.params.eventId)
       .populate('eventName', 'id name')
       .populate('eventTypes.eventType', 'id name event')
+      .populate('eventTypes.venueLocation', 'id name address city state')
+      .populate('eventTypes.subVenueLocation', 'id name venue')
+      .populate('eventTypes.coordinator', 'id name contact_number email')
       .populate('lead1', 'id name contact_number email')
       .populate('lead2', 'id name contact_number email')
       .populate('createdBy', 'id first_name last_name');
@@ -610,6 +643,9 @@ exports.getAllEvents = async (req, res) => {
     const events = await Event.find(query)
       .populate('eventName', 'id name')
       .populate('eventTypes.eventType', 'id name event')
+      .populate('eventTypes.venueLocation', 'id name address city state')
+      .populate('eventTypes.subVenueLocation', 'id name venue')
+      .populate('eventTypes.coordinator', 'id name contact_number email')
       .populate('lead1', 'id name contact_number email')
       .populate('lead2', 'id name contact_number email')
       .populate('createdBy', 'id first_name last_name')
@@ -644,6 +680,9 @@ exports.getMyEvents = async (req, res) => {
     const events = await Event.find({ createdBy: decodedToken.uid })
       .populate('eventName', 'id name')
       .populate('eventTypes.eventType', 'id name event')
+      .populate('eventTypes.venueLocation', 'id name address city state')
+      .populate('eventTypes.subVenueLocation', 'id name venue')
+      .populate('eventTypes.coordinator', 'id name contact_number email')
       .populate('lead1', 'id name contact_number email')
       .populate('lead2', 'id name contact_number email')
       .populate('createdBy', 'id first_name last_name')
@@ -799,6 +838,22 @@ exports.editEventExceptReceivedAmount = async (req, res) => {
           throw new Error(`eventTypes[${index}].endDate is required`);
         }
 
+        // Validate coordinator if provided
+        let coordinatorId = null;
+        if (type.coordinator) {
+          if (!mongoose.Types.ObjectId.isValid(type.coordinator)) {
+            throw new Error(`eventTypes[${index}].coordinator must be a valid coordinator ID`);
+          }
+          const coordinatorExists = await Coordinator.findById(type.coordinator);
+          if (!coordinatorExists || coordinatorExists.is_archived) {
+            throw new Error(`eventTypes[${index}].coordinator references a coordinator that does not exist`);
+          }
+          coordinatorId = type.coordinator;
+        } else if (existingType && existingType.coordinator) {
+          // Preserve existing coordinator if not provided
+          coordinatorId = existingType.coordinator;
+        }
+
         const advancesArray = Array.isArray(type.advances) ? type.advances : [];
 
         const advancesData = advancesArray.map((adv, advIndex) => {
@@ -852,6 +907,7 @@ exports.editEventExceptReceivedAmount = async (req, res) => {
           endDate: new Date(type.endDate),
           venueLocation: type.venueLocation || null,
           subVenueLocation: type.subVenueLocation || null,
+          coordinator: coordinatorId,
           agreedAmount: agreedAmount,
           accountAmount: accountAmount,
           accountGst: accountGst,
@@ -870,6 +926,11 @@ exports.editEventExceptReceivedAmount = async (req, res) => {
     // Populate eventName, eventType, leads, and venue details before returning
     await event.populate('eventName', 'id name');
     await event.populate('eventTypes.eventType', 'id name event');
+    await event.populate('eventTypes.venueLocation', 'id name address city state');
+    await event.populate('eventTypes.subVenueLocation', 'id name venue');
+    await event.populate('eventTypes.coordinator', 'id name contact_number email');
+    await event.populate('lead1', 'id name contact_number email');
+    await event.populate('lead2', 'id name contact_number email');
     await event.populate('createdBy', 'id first_name last_name');
 
     res.status(200).json({ message: "Event updated (received fields preserved)", event });
