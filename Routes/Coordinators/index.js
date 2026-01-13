@@ -7,7 +7,7 @@ const coordinatorController = require('../../Controlers/Coordinators');
 // Create coordinator
 router.post(
     "/",
-    isAuth,
+    // isAuth,
     [
         body('name').trim().not().isEmpty().withMessage('Coordinator name is required')
     ],
@@ -17,7 +17,7 @@ router.post(
 // Get all coordinators
 router.get(
     "/",
-    isAuth,
+    // isAuth,
     coordinatorController.getAllCoordinators
 );
 
@@ -31,7 +31,7 @@ router.get(
 // Update coordinator
 router.patch(
     "/:id",
-    isAuth,
+    // isAuth,
     [
         body('name').trim().not().isEmpty().withMessage('Coordinator name is required')
     ],
@@ -41,7 +41,7 @@ router.patch(
 // Delete coordinator
 router.delete(
     "/:id",
-    isAuth,
+    // isAuth,
     coordinatorController.deleteCoordinator
 );
 
