@@ -8,26 +8,21 @@ const advanceSchema = new mongoose.Schema({
   expectedAmount: { type: Number, required: true },
   advanceDate: { type: Date, required: true },
 
-  receivedAmount: { type: Number, default: 0 },
-  receivedDate: { type: Date },
-
-  remarks: {
-    accounts: { type: String, default: "" },
-    owner: { type: String, default: "" },
-    approver: { type: String, default: "" }
+  receivedAmount: { type: Number, default: null },
+  receivedDate: { type: Date, default: null },
+  
+  givenBy: { type: String, default: null },
+  collectedBy: { type: String, default: null },
+  modeOfPayment: { 
+    type: String, 
+    enum: ['cash', 'account'],
+    default: null 
   },
 
-  updatedBy: {
-    accounts: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
-    owner: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
-    approver: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null }
-  },
+  remarks: { type: String, default: "" },
 
-  updatedAt: {
-    accounts: { type: Date },
-    owner: { type: Date },
-    approver: { type: Date }
-  }
+  updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: "user", default: null },
+  updatedAt: { type: Date, default: null }
 }, { _id: false });
 
 const eventTypeSchema = new mongoose.Schema({
@@ -52,13 +47,11 @@ const eventTypeSchema = new mongoose.Schema({
     default: null
   },
   agreedAmount: { type: Number },
-  agreedAmountBreakup: {
-    accountAmount: { type: Number, default: 0 },
-    cashAmount: { type: Number, default: 0 },
-    accountGstRate: { type: Number, default: 0 },
-    accountGstAmount: { type: Number, default: 0 },
-    accountTotalWithGst: { type: Number, default: 0 }
-  },
+  accountAmount: { type: Number, default: 0 },
+  accountGst: { type: Number, default: 0 },
+  accountAmountWithGst: { type: Number, default: 0 },
+  cashAmount: { type: Number, default: 0 },
+  totalPayable: { type: Number, default: 0 },
   advances: { type: [advanceSchema], default: [] }
 });
 

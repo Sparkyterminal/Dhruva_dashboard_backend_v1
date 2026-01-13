@@ -356,19 +356,33 @@ exports.createEvent = async (req, res) => {
 
           const advanceNumber = adv.advanceNumber != null ? adv.advanceNumber : advIndex + 1;
 
+          // Validate modeOfPayment if provided
+          if (adv.modeOfPayment && !['cash', 'account'].includes(adv.modeOfPayment.toLowerCase())) {
+            throw new Error(`eventTypes[${index}].advances[${advIndex}].modeOfPayment must be 'cash' or 'account'`);
+          }
+
           return {
             advanceNumber,
             expectedAmount: adv.expectedAmount,
             advanceDate: new Date(adv.advanceDate),
-            receivedAmount: adv.receivedAmount || 0,
+            receivedAmount: adv.receivedAmount || null,
             receivedDate: adv.receivedDate ? new Date(adv.receivedDate) : null,
-            remarks: adv.remarks || { accounts: "", owner: "", approver: "" },
-            updatedBy: adv.updatedBy || { accounts: null, owner: null, approver: null },
-            updatedAt: adv.updatedAt || { accounts: null, owner: null, approver: null }
+            givenBy: adv.givenBy || null,
+            collectedBy: adv.collectedBy || null,
+            modeOfPayment: adv.modeOfPayment ? adv.modeOfPayment.toLowerCase() : null,
+            remarks: adv.remarks || "",
+            updatedBy: adv.updatedBy || null,
+            updatedAt: adv.updatedAt ? new Date(adv.updatedAt) : null
           };
         });
 
-        const breakup = type.agreedAmountBreakup || {};
+        // Handle amount fields - all 6 fields should be stored
+        const agreedAmount = type.agreedAmount != null ? type.agreedAmount : undefined;
+        const accountAmount = type.accountAmount != null ? type.accountAmount : 0;
+        const accountGst = type.accountGst != null ? type.accountGst : 0;
+        const accountAmountWithGst = type.accountAmountWithGst != null ? type.accountAmountWithGst : 0;
+        const cashAmount = type.cashAmount != null ? type.cashAmount : 0;
+        const totalPayable = type.totalPayable != null ? type.totalPayable : 0;
 
         eventTypesData.push({
           eventType: eventTypeId,
@@ -376,14 +390,12 @@ exports.createEvent = async (req, res) => {
           endDate: new Date(type.endDate),
           venueLocation: venueLocationId,
           subVenueLocation: subVenueLocationId,
-          agreedAmount: type.agreedAmount != null ? type.agreedAmount : undefined,
-          agreedAmountBreakup: {
-            accountAmount: breakup.accountAmount ?? 0,
-            cashAmount: breakup.cashAmount ?? 0,
-            accountGstRate: breakup.accountGstRate ?? 0,
-            accountGstAmount: breakup.accountGstAmount ?? 0,
-            accountTotalWithGst: breakup.accountTotalWithGst ?? 0
-          },
+          agreedAmount: agreedAmount,
+          accountAmount: accountAmount,
+          accountGst: accountGst,
+          accountAmountWithGst: accountAmountWithGst,
+          cashAmount: cashAmount,
+          totalPayable: totalPayable,
           advances: advancesData
         });
       }
@@ -471,10 +483,26 @@ exports.updateAdvance = async (req, res) => {
       advance.receivedDate = new Date(receivedDate);
     }
     if (typeof remarks === "string") {
-      advance.remarks[role.toLowerCase()] = remarks;
-      advance.updatedBy[role.toLowerCase()] = userId || null;
-      advance.updatedAt[role.toLowerCase()] = new Date();
+      advance.remarks = remarks;
     }
+    
+    // Update givenBy, collectedBy, modeOfPayment if provided
+    if (req.body.givenBy !== undefined) {
+      advance.givenBy = req.body.givenBy || null;
+    }
+    if (req.body.collectedBy !== undefined) {
+      advance.collectedBy = req.body.collectedBy || null;
+    }
+    if (req.body.modeOfPayment !== undefined) {
+      if (req.body.modeOfPayment && !['cash', 'account'].includes(req.body.modeOfPayment.toLowerCase())) {
+        return res.status(400).json({ message: "modeOfPayment must be 'cash' or 'account'" });
+      }
+      advance.modeOfPayment = req.body.modeOfPayment ? req.body.modeOfPayment.toLowerCase() : null;
+    }
+    
+    // Update tracking fields
+    advance.updatedBy = userId || decodedToken.uid || null;
+    advance.updatedAt = new Date();
 
     await event.save();
 
@@ -550,17 +578,26 @@ exports.addAdvanceToEventType = async (req, res) => {
     if (receivedDate) {
       advance.receivedDate = new Date(receivedDate);
     }
-    if (remarks && typeof remarks === "object") {
-      advance.remarks = {
-        accounts: remarks.accounts ?? advance.remarks.accounts,
-        owner: remarks.owner ?? advance.remarks.owner,
-        approver: remarks.approver ?? advance.remarks.approver
-      };
+    if (remarks !== undefined) {
+      advance.remarks = typeof remarks === "string" ? remarks : (remarks || "");
+    }
+    
+    // Update givenBy, collectedBy, modeOfPayment if provided
+    if (req.body.givenBy !== undefined) {
+      advance.givenBy = req.body.givenBy || null;
+    }
+    if (req.body.collectedBy !== undefined) {
+      advance.collectedBy = req.body.collectedBy || null;
+    }
+    if (req.body.modeOfPayment !== undefined) {
+      if (req.body.modeOfPayment && !['cash', 'account'].includes(req.body.modeOfPayment.toLowerCase())) {
+        return res.status(400).json({ message: "modeOfPayment must be 'cash' or 'account'" });
+      }
+      advance.modeOfPayment = req.body.modeOfPayment ? req.body.modeOfPayment.toLowerCase() : null;
     }
 
-    const roleKey = role.toLowerCase();
-    advance.updatedBy[roleKey] = userId || decodedToken.uid || null;
-    advance.updatedAt[roleKey] = new Date();
+    advance.updatedBy = userId || decodedToken.uid || null;
+    advance.updatedAt = new Date();
 
     await event.save();
 
@@ -903,20 +940,34 @@ exports.editEventExceptReceivedAmount = async (req, res) => {
             ? existingType.advances.find(a => a.advanceNumber === advanceNumber)
             : null;
 
+          // Validate modeOfPayment if provided
+          if (adv.modeOfPayment && !['cash', 'account'].includes(adv.modeOfPayment.toLowerCase())) {
+            throw new Error(`eventTypes[${index}].advances[${advIndex}].modeOfPayment must be 'cash' or 'account'`);
+          }
+
           return {
             advanceNumber,
             expectedAmount: adv.expectedAmount,
             advanceDate: new Date(adv.advanceDate),
-            receivedAmount: existingAdvance ? existingAdvance.receivedAmount : (adv.receivedAmount || 0),
+            receivedAmount: existingAdvance ? existingAdvance.receivedAmount : (adv.receivedAmount || null),
             receivedDate: existingAdvance ? existingAdvance.receivedDate : (adv.receivedDate ? new Date(adv.receivedDate) : null),
-            remarks: existingAdvance ? existingAdvance.remarks : (adv.remarks || { accounts: "", owner: "", approver: "" }),
-            updatedBy: existingAdvance ? existingAdvance.updatedBy : (adv.updatedBy || { accounts: null, owner: null, approver: null }),
-            updatedAt: existingAdvance ? existingAdvance.updatedAt : (adv.updatedAt || { accounts: null, owner: null, approver: null })
+            givenBy: existingAdvance ? existingAdvance.givenBy : (adv.givenBy || null),
+            collectedBy: existingAdvance ? existingAdvance.collectedBy : (adv.collectedBy || null),
+            modeOfPayment: existingAdvance ? existingAdvance.modeOfPayment : (adv.modeOfPayment ? adv.modeOfPayment.toLowerCase() : null),
+            remarks: existingAdvance ? existingAdvance.remarks : (adv.remarks || ""),
+            updatedBy: existingAdvance ? existingAdvance.updatedBy : (adv.updatedBy || null),
+            updatedAt: existingAdvance ? existingAdvance.updatedAt : (adv.updatedAt ? new Date(adv.updatedAt) : null)
           };
         });
 
-        const breakup = type.agreedAmountBreakup || {};
-        const existingBreakup = existingType?.agreedAmountBreakup || {};
+        // Handle amount fields - preserve existing values if not provided
+        const existingAmounts = existingType || {};
+        const agreedAmount = type.agreedAmount != null ? type.agreedAmount : existingAmounts.agreedAmount;
+        const accountAmount = type.accountAmount != null ? type.accountAmount : (existingAmounts.accountAmount ?? 0);
+        const accountGst = type.accountGst != null ? type.accountGst : (existingAmounts.accountGst ?? 0);
+        const accountAmountWithGst = type.accountAmountWithGst != null ? type.accountAmountWithGst : (existingAmounts.accountAmountWithGst ?? 0);
+        const cashAmount = type.cashAmount != null ? type.cashAmount : (existingAmounts.cashAmount ?? 0);
+        const totalPayable = type.totalPayable != null ? type.totalPayable : (existingAmounts.totalPayable ?? 0);
 
         eventTypesData.push({
           eventType: eventTypeId,
@@ -924,14 +975,12 @@ exports.editEventExceptReceivedAmount = async (req, res) => {
           endDate: new Date(type.endDate),
           venueLocation: venueLocationId,
           subVenueLocation: subVenueLocationId,
-          agreedAmount: type.agreedAmount != null ? type.agreedAmount : undefined,
-          agreedAmountBreakup: {
-            accountAmount: breakup.accountAmount ?? existingBreakup.accountAmount ?? 0,
-            cashAmount: breakup.cashAmount ?? existingBreakup.cashAmount ?? 0,
-            accountGstRate: breakup.accountGstRate ?? existingBreakup.accountGstRate ?? 0,
-            accountGstAmount: breakup.accountGstAmount ?? existingBreakup.accountGstAmount ?? 0,
-            accountTotalWithGst: breakup.accountTotalWithGst ?? existingBreakup.accountTotalWithGst ?? 0
-          },
+          agreedAmount: agreedAmount,
+          accountAmount: accountAmount,
+          accountGst: accountGst,
+          accountAmountWithGst: accountAmountWithGst,
+          cashAmount: cashAmount,
+          totalPayable: totalPayable,
           advances: advancesData
         });
       }
