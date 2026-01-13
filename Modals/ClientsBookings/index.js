@@ -56,8 +56,18 @@ const eventSchema = new mongoose.Schema({
   clientName: { type: String, required: true },
   brideName: { type: String },
   groomName: { type: String },
-  lead1: { type: String, required: false },
-  lead2: { type: String, required: false },
+  lead1: { 
+    type: mongoose.Schema.Types.ObjectId, 
+    ref: "coordinator", 
+    required: false,
+    default: null
+  },
+  lead2: { 
+    type: mongoose.Schema.Types.ObjectId, 
+    ref: "coordinator", 
+    required: false,
+    default: null
+  },
   contactNumber: { type: String, required: true },
   altContactNumber: { type: String },
   altContactName: { type: String },
