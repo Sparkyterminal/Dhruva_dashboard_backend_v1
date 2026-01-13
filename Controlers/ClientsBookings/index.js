@@ -182,9 +182,6 @@ const jwt = require('jsonwebtoken');
 const Event = require("../../Modals/ClientsBookings");
 const EventName = require("../../Modals/events");
 const EventTypeModel = require("../../Modals/eventTypes");
-const Coordinator = require("../../Modals/Coordinators");
-const Venue = require("../../Modals/Venue");
-const SubVenueLocation = require("../../Modals/SubVenueLocation");
 const STATUS = require("../../utils/statusCodes");
 const MESSAGE = require("../../utils/messages");
 const mongoose = require("mongoose");
@@ -221,7 +218,9 @@ exports.createEvent = async (req, res) => {
       altContactName,
       lead1,
       lead2,
-      note
+      note,
+      eventConfirmation,
+      advancePaymentType
     } = req.body;
 
     if (!eventId || !mongoose.Types.ObjectId.isValid(eventId)) {
@@ -239,32 +238,6 @@ exports.createEvent = async (req, res) => {
 
     if (!contactNumber || typeof contactNumber !== "string" || !contactNumber.trim()) {
       return res.status(400).json({ message: "contactNumber is required" });
-    }
-
-    // Validate lead1 if provided
-    let lead1Id = null;
-    if (lead1) {
-      if (!mongoose.Types.ObjectId.isValid(lead1)) {
-        return res.status(400).json({ message: "Invalid lead1 coordinator ID" });
-      }
-      const coordinatorExists = await Coordinator.findById(lead1);
-      if (!coordinatorExists || coordinatorExists.is_archived) {
-        return res.status(404).json({ message: "Lead1 coordinator not found" });
-      }
-      lead1Id = lead1;
-    }
-
-    // Validate lead2 if provided
-    let lead2Id = null;
-    if (lead2) {
-      if (!mongoose.Types.ObjectId.isValid(lead2)) {
-        return res.status(400).json({ message: "Invalid lead2 coordinator ID" });
-      }
-      const coordinatorExists = await Coordinator.findById(lead2);
-      if (!coordinatorExists || coordinatorExists.is_archived) {
-        return res.status(404).json({ message: "Lead2 coordinator not found" });
-      }
-      lead2Id = lead2;
     }
 
     const eventTypesData = [];
@@ -314,36 +287,6 @@ exports.createEvent = async (req, res) => {
           throw new Error(`eventTypes[${index}].endDate is required`);
         }
 
-        // Validate venueLocation if provided
-        let venueLocationId = null;
-        if (type.venueLocation) {
-          if (!mongoose.Types.ObjectId.isValid(type.venueLocation)) {
-            throw new Error(`eventTypes[${index}].venueLocation must be a valid venue ID`);
-          }
-          const venueExists = await Venue.findById(type.venueLocation);
-          if (!venueExists || venueExists.is_archived) {
-            throw new Error(`eventTypes[${index}].venueLocation references a venue that does not exist`);
-          }
-          venueLocationId = type.venueLocation;
-        }
-
-        // Validate subVenueLocation if provided
-        let subVenueLocationId = null;
-        if (type.subVenueLocation) {
-          if (!mongoose.Types.ObjectId.isValid(type.subVenueLocation)) {
-            throw new Error(`eventTypes[${index}].subVenueLocation must be a valid sub venue location ID`);
-          }
-          const subVenueExists = await SubVenueLocation.findById(type.subVenueLocation);
-          if (!subVenueExists || subVenueExists.is_archived) {
-            throw new Error(`eventTypes[${index}].subVenueLocation references a sub venue location that does not exist`);
-          }
-          // Optional: Verify subVenueLocation belongs to the selected venue
-          if (venueLocationId && subVenueExists.venue.toString() !== venueLocationId.toString()) {
-            throw new Error(`eventTypes[${index}].subVenueLocation does not belong to the selected venue`);
-          }
-          subVenueLocationId = type.subVenueLocation;
-        }
-
         const advancesArray = Array.isArray(type.advances) ? type.advances : [];
 
         const advancesData = advancesArray.map((adv, advIndex) => {
@@ -365,6 +308,7 @@ exports.createEvent = async (req, res) => {
             advanceNumber,
             expectedAmount: adv.expectedAmount,
             advanceDate: new Date(adv.advanceDate),
+            status: adv.status || "Pending",
             receivedAmount: adv.receivedAmount || null,
             receivedDate: adv.receivedDate ? new Date(adv.receivedDate) : null,
             givenBy: adv.givenBy || null,
@@ -388,8 +332,8 @@ exports.createEvent = async (req, res) => {
           eventType: eventTypeId,
           startDate: new Date(type.startDate),
           endDate: new Date(type.endDate),
-          venueLocation: venueLocationId,
-          subVenueLocation: subVenueLocationId,
+          venueLocation: type.venueLocation || null,
+          subVenueLocation: type.subVenueLocation || null,
           agreedAmount: agreedAmount,
           accountAmount: accountAmount,
           accountGst: accountGst,
@@ -407,12 +351,14 @@ exports.createEvent = async (req, res) => {
       clientName: clientName.trim(),
       brideName: brideName ? brideName.trim() : undefined,
       groomName: groomName ? groomName.trim() : undefined,
-      lead1: lead1Id,
-      lead2: lead2Id,
+      lead1: lead1 || null,
+      lead2: lead2 || null,
       contactNumber: contactNumber.trim(),
       altContactNumber: altContactNumber ? altContactNumber.trim() : undefined,
       altContactName: altContactName ? altContactName.trim() : undefined,
       note: note ? note.trim() : undefined,
+      eventConfirmation: eventConfirmation || undefined,
+      advancePaymentType: advancePaymentType || undefined,
       createdBy: decodedToken.uid
     });
 
@@ -421,10 +367,6 @@ exports.createEvent = async (req, res) => {
     // Populate eventName, eventType, leads, and venue details before returning
     await event.populate('eventName', 'id name');
     await event.populate('eventTypes.eventType', 'id name event');
-    await event.populate('eventTypes.venueLocation', 'id name');
-    await event.populate('eventTypes.subVenueLocation', 'id name venue');
-    await event.populate('lead1', 'id name contact_number email');
-    await event.populate('lead2', 'id name contact_number email');
     await event.populate('createdBy', 'id first_name last_name');
     
     res.status(201).json({ message: "Event created", event });
@@ -509,10 +451,6 @@ exports.updateAdvance = async (req, res) => {
     // Populate eventName, eventType, leads, and venue details before returning
     await event.populate('eventName', 'id name');
     await event.populate('eventTypes.eventType', 'id name event');
-    await event.populate('eventTypes.venueLocation', 'id name');
-    await event.populate('eventTypes.subVenueLocation', 'id name venue');
-    await event.populate('lead1', 'id name contact_number email');
-    await event.populate('lead2', 'id name contact_number email');
 
     res.status(200).json({ message: "Advance updated", event, advance });
   } catch (error) {
@@ -604,10 +542,6 @@ exports.addAdvanceToEventType = async (req, res) => {
     // Populate eventName, eventType, leads, and venue details before returning
     await event.populate('eventName', 'id name');
     await event.populate('eventTypes.eventType', 'id name event');
-    await event.populate('eventTypes.venueLocation', 'id name');
-    await event.populate('eventTypes.subVenueLocation', 'id name venue');
-    await event.populate('lead1', 'id name contact_number email');
-    await event.populate('lead2', 'id name contact_number email');
 
     return res.status(200).json({
       message: "Advance updated successfully",
@@ -637,10 +571,6 @@ exports.getEvent = async (req, res) => {
     const event = await Event.findById(req.params.eventId)
       .populate('eventName', 'id name')
       .populate('eventTypes.eventType', 'id name event')
-      .populate('eventTypes.venueLocation', 'id name')
-      .populate('eventTypes.subVenueLocation', 'id name venue')
-      .populate('lead1', 'id name contact_number email')
-      .populate('lead2', 'id name contact_number email')
       .populate('createdBy', 'id first_name last_name');
     
     if (!event) return res.status(404).json({ message: "Event not found" });
@@ -678,10 +608,6 @@ exports.getAllEvents = async (req, res) => {
     const events = await Event.find(query)
       .populate('eventName', 'id name')
       .populate('eventTypes.eventType', 'id name event')
-      .populate('eventTypes.venueLocation', 'id name')
-      .populate('eventTypes.subVenueLocation', 'id name venue')
-      .populate('lead1', 'id name contact_number email')
-      .populate('lead2', 'id name contact_number email')
       .populate('createdBy', 'id first_name last_name')
       .sort({ createdAt: -1 });  // latest events first
 
@@ -714,10 +640,6 @@ exports.getMyEvents = async (req, res) => {
     const events = await Event.find({ createdBy: decodedToken.uid })
       .populate('eventName', 'id name')
       .populate('eventTypes.eventType', 'id name event')
-      .populate('eventTypes.venueLocation', 'id name')
-      .populate('eventTypes.subVenueLocation', 'id name venue')
-      .populate('lead1', 'id name contact_number email')
-      .populate('lead2', 'id name contact_number email')
       .populate('createdBy', 'id first_name last_name')
       .sort({ createdAt: -1 });  // latest events first
 
@@ -764,7 +686,9 @@ exports.editEventExceptReceivedAmount = async (req, res) => {
       altContactName,
       lead1,
       lead2,
-      note
+      note,
+      eventConfirmation,
+      advancePaymentType
     } = req.body;
 
     if (!clientName || typeof clientName !== "string" || !clientName.trim()) {
@@ -797,38 +721,6 @@ exports.editEventExceptReceivedAmount = async (req, res) => {
       event.eventName = newEventId;
     }
 
-    // Validate and update lead1 if provided
-    if (lead1 !== undefined) {
-      if (lead1 === null || lead1 === "") {
-        event.lead1 = null;
-      } else {
-        if (!mongoose.Types.ObjectId.isValid(lead1)) {
-          return res.status(400).json({ message: "Invalid lead1 coordinator ID" });
-        }
-        const coordinatorExists = await Coordinator.findById(lead1);
-        if (!coordinatorExists || coordinatorExists.is_archived) {
-          return res.status(404).json({ message: "Lead1 coordinator not found" });
-        }
-        event.lead1 = lead1;
-      }
-    }
-
-    // Validate and update lead2 if provided
-    if (lead2 !== undefined) {
-      if (lead2 === null || lead2 === "") {
-        event.lead2 = null;
-      } else {
-        if (!mongoose.Types.ObjectId.isValid(lead2)) {
-          return res.status(400).json({ message: "Invalid lead2 coordinator ID" });
-        }
-        const coordinatorExists = await Coordinator.findById(lead2);
-        if (!coordinatorExists || coordinatorExists.is_archived) {
-          return res.status(404).json({ message: "Lead2 coordinator not found" });
-        }
-        event.lead2 = lead2;
-      }
-    }
-
     // Update basic fields
     event.clientName = clientName.trim();
     event.brideName = brideName ? brideName.trim() : undefined;
@@ -836,7 +728,15 @@ exports.editEventExceptReceivedAmount = async (req, res) => {
     event.contactNumber = contactNumber.trim();
     event.altContactNumber = altContactNumber ? altContactNumber.trim() : undefined;
     event.altContactName = altContactName ? altContactName.trim() : undefined;
+    event.lead1 = lead1 !== undefined ? (lead1 || null) : event.lead1;
+    event.lead2 = lead2 !== undefined ? (lead2 || null) : event.lead2;
     event.note = note ? note.trim() : undefined;
+    if (eventConfirmation !== undefined) {
+      event.eventConfirmation = eventConfirmation || undefined;
+    }
+    if (advancePaymentType !== undefined) {
+      event.advancePaymentType = advancePaymentType || undefined;
+    }
 
     // Update eventTypes if provided
     const hasEventTypes = Array.isArray(eventTypes) && eventTypes.length > 0;
@@ -893,36 +793,6 @@ exports.editEventExceptReceivedAmount = async (req, res) => {
           throw new Error(`eventTypes[${index}].endDate is required`);
         }
 
-        // Validate venueLocation if provided
-        let venueLocationId = null;
-        if (type.venueLocation) {
-          if (!mongoose.Types.ObjectId.isValid(type.venueLocation)) {
-            throw new Error(`eventTypes[${index}].venueLocation must be a valid venue ID`);
-          }
-          const venueExists = await Venue.findById(type.venueLocation);
-          if (!venueExists || venueExists.is_archived) {
-            throw new Error(`eventTypes[${index}].venueLocation references a venue that does not exist`);
-          }
-          venueLocationId = type.venueLocation;
-        }
-
-        // Validate subVenueLocation if provided
-        let subVenueLocationId = null;
-        if (type.subVenueLocation) {
-          if (!mongoose.Types.ObjectId.isValid(type.subVenueLocation)) {
-            throw new Error(`eventTypes[${index}].subVenueLocation must be a valid sub venue location ID`);
-          }
-          const subVenueExists = await SubVenueLocation.findById(type.subVenueLocation);
-          if (!subVenueExists || subVenueExists.is_archived) {
-            throw new Error(`eventTypes[${index}].subVenueLocation references a sub venue location that does not exist`);
-          }
-          // Optional: Verify subVenueLocation belongs to the selected venue
-          if (venueLocationId && subVenueExists.venue.toString() !== venueLocationId.toString()) {
-            throw new Error(`eventTypes[${index}].subVenueLocation does not belong to the selected venue`);
-          }
-          subVenueLocationId = type.subVenueLocation;
-        }
-
         const advancesArray = Array.isArray(type.advances) ? type.advances : [];
 
         const advancesData = advancesArray.map((adv, advIndex) => {
@@ -949,6 +819,7 @@ exports.editEventExceptReceivedAmount = async (req, res) => {
             advanceNumber,
             expectedAmount: adv.expectedAmount,
             advanceDate: new Date(adv.advanceDate),
+            status: existingAdvance ? existingAdvance.status : (adv.status || "Pending"),
             receivedAmount: existingAdvance ? existingAdvance.receivedAmount : (adv.receivedAmount || null),
             receivedDate: existingAdvance ? existingAdvance.receivedDate : (adv.receivedDate ? new Date(adv.receivedDate) : null),
             givenBy: existingAdvance ? existingAdvance.givenBy : (adv.givenBy || null),
@@ -973,8 +844,8 @@ exports.editEventExceptReceivedAmount = async (req, res) => {
           eventType: eventTypeId,
           startDate: new Date(type.startDate),
           endDate: new Date(type.endDate),
-          venueLocation: venueLocationId,
-          subVenueLocation: subVenueLocationId,
+          venueLocation: type.venueLocation || null,
+          subVenueLocation: type.subVenueLocation || null,
           agreedAmount: agreedAmount,
           accountAmount: accountAmount,
           accountGst: accountGst,
@@ -993,10 +864,6 @@ exports.editEventExceptReceivedAmount = async (req, res) => {
     // Populate eventName, eventType, leads, and venue details before returning
     await event.populate('eventName', 'id name');
     await event.populate('eventTypes.eventType', 'id name event');
-    await event.populate('eventTypes.venueLocation', 'id name');
-    await event.populate('eventTypes.subVenueLocation', 'id name venue');
-    await event.populate('lead1', 'id name contact_number email');
-    await event.populate('lead2', 'id name contact_number email');
     await event.populate('createdBy', 'id first_name last_name');
 
     res.status(200).json({ message: "Event updated (received fields preserved)", event });
