@@ -35,8 +35,24 @@ const eventTypeSchema = new mongoose.Schema({
   },
   startDate: { type: Date, required: true },
   endDate: { type: Date, required: true },
-  venueLocation: { type: String, required: false },
-  subVenueLocation: { type: String, required: false },
+  venueLocation: { 
+    type: mongoose.Schema.Types.ObjectId, 
+    ref: "venue", 
+    required: false,
+    default: null
+  },
+  subVenueLocation: { 
+    type: mongoose.Schema.Types.ObjectId, 
+    ref: "subVenueLocation", 
+    required: false,
+    default: null
+  },
+  coordinator: { 
+    type: mongoose.Schema.Types.ObjectId, 
+    ref: "coordinator", 
+    required: false,
+    default: null
+  },
   agreedAmount: { type: Number },
   accountAmount: { type: Number, default: 0 },
   accountGst: { type: Number, default: 0 },
