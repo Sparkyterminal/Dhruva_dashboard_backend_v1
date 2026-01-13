@@ -270,17 +270,17 @@ module.exports.getAllRequests = async (req, res) => {
       const department = req.query.department;
       const search = req.query.search?.trim();
   
-      // Date filter inputs - accept either 'date' or 'singleDate' query parameter
-      const singleDate = req.query.date
-        ? new Date(req.query.date)
-        : req.query.singleDate
-        ? new Date(req.query.singleDate)
-        : null;
+      // Date filter inputs for createdAt
+      const singleCreatedAtDate = req.query.date ? new Date(req.query.date) : null;
       const startDate = req.query.startDate ? new Date(req.query.startDate) : null;
       const endDate = req.query.endDate ? new Date(req.query.endDate) : null;
   
-      // Required date filter inputs
-      const requiredDateSingle = req.query.required_date ? new Date(req.query.required_date) : null;
+      // Required date filter inputs (support both required_date and singleDate for convenience)
+      const requiredDateSingle = req.query.required_date
+        ? new Date(req.query.required_date)
+        : req.query.singleDate
+        ? new Date(req.query.singleDate)
+        : null;
       const requiredDateStart = req.query.required_date_start ? new Date(req.query.required_date_start) : null;
       const requiredDateEnd = req.query.required_date_end ? new Date(req.query.required_date_end) : null;
   
@@ -291,16 +291,8 @@ module.exports.getAllRequests = async (req, res) => {
       if (priority) query.priority = priority;
       if (department) query.department = department;
   
-      // Date filtering logic for createdAt
-      if (singleDate) {
-        const startOfDay = new Date(singleDate);
-        startOfDay.setHours(0, 0, 0, 0);
-  
-        const endOfDay = new Date(singleDate);
-        endOfDay.setHours(23, 59, 59, 999);
-  
-        query.createdAt = { $gte: startOfDay, $lte: endOfDay };
-      } else if (startDate && endDate) {
+      // Date filtering logic for createdAt (only start/end date; singleDate is used for required_date)
+      if (startDate && endDate) {
         query.createdAt = { $gte: startDate, $lte: endDate };
       } else if (startDate) {
         query.createdAt = { $gte: startDate };
