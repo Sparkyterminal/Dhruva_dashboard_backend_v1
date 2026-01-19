@@ -275,7 +275,7 @@ const vendorSchema = new Schema(
     },
     vendor_belongs_to: {
       type: ObjectId,
-      ref: 'user',
+      ref: 'department',
       required: false
     }
   },
