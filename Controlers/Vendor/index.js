@@ -716,7 +716,7 @@ exports.getAllVendorsList = async (req, res) => {
       vendor_type, 
       vendor_status,
       page = 1, 
-      limit = 20 
+      limit = 1000000
     } = req.query;
 
     // Build query

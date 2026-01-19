@@ -78,6 +78,108 @@ module.exports.createDepartment = async (req, res) => {
     }
 }
 
+// module.exports.getDepartments = async (req, res) => {
+
+//     const errors = validationResult(req);
+
+//     if (!errors.isEmpty()) {
+//         return res.status(STATUS.BAD_REQUEST).json({
+//             message: `Bad request`,
+//         });
+//     }
+
+//     const token = req.get('Authorization');
+//     let decodedToken = await jwt.decode(token);
+
+//     // if(decodedToken.role != "ADMIN"){
+//     //     return res.status(STATUS.UNAUTHORISED).json({
+//     //         message: MESSAGE.unauthorized,
+//     //     });
+//     // }
+
+//     //Set Status From Request Query
+
+//     let status = true;
+
+//     if(req.query.status === undefined || req.query.status === ""){
+//         status = null;
+//     }
+//     else{
+//         if(req.query.status != "false" && req.query.status != "true"){
+//             status = true;
+//         }
+//         else{
+//             let query_status = JSON.parse(req.query.status);
+//             status = query_status;
+//         }        
+//     }
+
+//     //Set Pagination Configurations
+
+//     let pageInt;
+//     let sizeInt;
+//     const page = req.query.page;
+//     const size = req.query.size;
+
+//     if(size != undefined){
+//         sizeInt = parseInt(size);
+//     }
+//     else{
+//         sizeInt = 10;
+//     }
+
+//     if(page != undefined){
+//         pageInt = parseInt(page);
+//     }
+//     else{
+//         pageInt = 1;
+//     }
+
+//     //Set Sorting Configurations
+
+//     let sort;
+
+//     if(req.query.sort === undefined || req.query.sort === ""){
+//         sort = -1;
+//     }
+//     else{
+//         if(req.query.sort != "-1" && req.query.sort != "1"){
+//             sort = -1;
+//         }
+//         else{
+//             sort = parseInt(req.query.sort);
+//         }
+//     }
+
+//     try {
+//         let documentCount = 0;
+//         let departments = [];
+        
+//         if(status === null){
+//             documentCount = await Department.countDocuments({ is_archived: false });
+//             departments = await Department.find({is_archived: false}, { id: 1, department_id: 1, name: 1, is_active: 1 }).skip((pageInt - 1) * sizeInt).limit(sizeInt).sort({department_id: 1}).exec();
+//         }
+//         else{
+//             documentCount = await Department.find({ is_active: status, is_archived: false }).count();
+//             departments = await Department.find({ is_active: status, is_archived: false },{ id: 1, department_id: 1, name: 1, is_active: 1 }).skip((pageInt - 1) * sizeInt).limit(sizeInt).sort({department_id: 1}).exec();
+//         }
+
+//         return res.status(STATUS.SUCCESS).json({
+//             currentPage: pageInt,
+//             items: departments,
+//             totalItems: documentCount,
+//             totalPages: Math.ceil(documentCount/sizeInt)
+//         });
+//     } 
+//     catch (error) {
+//         //console.log(error);
+//         return res.status(STATUS.INTERNAL_SERVER_ERROR).json({
+//             message: MESSAGE.internalServerError,
+//             error,
+//         });
+//     }
+// }
+
 module.exports.getDepartments = async (req, res) => {
 
     const errors = validationResult(req);
@@ -114,61 +216,25 @@ module.exports.getDepartments = async (req, res) => {
         }        
     }
 
-    //Set Pagination Configurations
-
-    let pageInt;
-    let sizeInt;
-    const page = req.query.page;
-    const size = req.query.size;
-
-    if(size != undefined){
-        sizeInt = parseInt(size);
-    }
-    else{
-        sizeInt = 10;
-    }
-
-    if(page != undefined){
-        pageInt = parseInt(page);
-    }
-    else{
-        pageInt = 1;
-    }
-
-    //Set Sorting Configurations
-
-    let sort;
-
-    if(req.query.sort === undefined || req.query.sort === ""){
-        sort = -1;
-    }
-    else{
-        if(req.query.sort != "-1" && req.query.sort != "1"){
-            sort = -1;
-        }
-        else{
-            sort = parseInt(req.query.sort);
-        }
-    }
-
     try {
-        let documentCount = 0;
         let departments = [];
         
         if(status === null){
-            documentCount = await Department.countDocuments({ is_archived: false });
-            departments = await Department.find({is_archived: false}, { id: 1, department_id: 1, name: 1, is_active: 1 }).skip((pageInt - 1) * sizeInt).limit(sizeInt).sort({department_id: 1}).exec();
+            departments = await Department.find(
+                { is_archived: false }, 
+                { id: 1, department_id: 1, name: 1, is_active: 1 }
+            ).sort({ department_id: 1 }).exec();
         }
         else{
-            documentCount = await Department.find({ is_active: status, is_archived: false }).count();
-            departments = await Department.find({ is_active: status, is_archived: false },{ id: 1, department_id: 1, name: 1, is_active: 1 }).skip((pageInt - 1) * sizeInt).limit(sizeInt).sort({department_id: 1}).exec();
+            departments = await Department.find(
+                { is_active: status, is_archived: false },
+                { id: 1, department_id: 1, name: 1, is_active: 1 }
+            ).sort({ department_id: 1 }).exec();
         }
 
         return res.status(STATUS.SUCCESS).json({
-            currentPage: pageInt,
             items: departments,
-            totalItems: documentCount,
-            totalPages: Math.ceil(documentCount/sizeInt)
+            totalItems: departments.length
         });
     } 
     catch (error) {
