@@ -570,6 +570,7 @@ exports.createVendor = async (req, res) => {
     referred_by,
     refered_by,
     department,
+    depId, // Handle depId from frontend
     temp_address_1,
     temp_city,
     temp_pin,
@@ -643,23 +644,26 @@ exports.createVendor = async (req, res) => {
   }
 
   // Validate vendor_belongs_to (now references department)
+  // Handle both depId (from frontend) and vendor_belongs_to
   let vendorBelongsToDept = null;
-  if (vendor_belongs_to) {
-    if (!mongoose.Types.ObjectId.isValid(vendor_belongs_to)) {
+  const belongsToId = vendor_belongs_to || depId; // Check both fields
+  
+  if (belongsToId) {
+    if (!mongoose.Types.ObjectId.isValid(belongsToId)) {
       return res.status(STATUS.VALIDATION_FAILED).json({
         message: 'Invalid vendor_belongs_to department ID',
         field: 'vendor_belongs_to'
       });
     }
     // Verify department exists
-    const deptExists = await Department.findById(vendor_belongs_to);
+    const deptExists = await Department.findById(belongsToId);
     if (!deptExists) {
       return res.status(STATUS.NOT_FOUND).json({
         message: 'Department not found for vendor_belongs_to',
         field: 'vendor_belongs_to'
       });
     }
-    vendorBelongsToDept = vendor_belongs_to;
+    vendorBelongsToDept = belongsToId;
   } else {
     // If vendor_belongs_to not provided, try to get it from the user's department
     const user = await User.findById(userId).select('department');
