@@ -547,7 +547,14 @@ exports.getVendors = async (req, res) => {
 exports.getVendorById = async (req, res) => {
   try {
     const vendor = await Vendor.findOne({ _id: req.params.id })
-      .populate('department', 'id name');
+      .populate('department', 'id name')
+      .populate({
+        path: 'vendor_belongs_to',
+        populate: {
+          path: 'department.department',
+          select: 'name description' 
+        }
+      })
 
     if (!vendor) {
       return res.status(404).json({ success: false, error: "Vendor not found" });
