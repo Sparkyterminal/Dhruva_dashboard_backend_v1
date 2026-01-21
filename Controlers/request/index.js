@@ -531,6 +531,8 @@ module.exports.updateRequest = async (req, res) => {
             amount_paid,
             planned_amount,
             approver_amount,
+            entity_account,
+            amount_paid_to,
             remarks,
             is_active
         } = req.body;
@@ -612,7 +614,12 @@ module.exports.updateRequest = async (req, res) => {
             }
             updateData.approver_amount = approverAmt;
         }
-
+        if (entity_account !== undefined) {
+            updateData.entity_account = entity_account;
+        }
+        if (amount_paid_to !== undefined) {
+            updateData.amount_paid_to = amount_paid_to;
+        }
         if (remarks !== undefined) {
             updateData.remarks = remarks.trim();
         }

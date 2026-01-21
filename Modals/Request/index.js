@@ -57,6 +57,16 @@ const requestSchema = new Schema(
             default: 0,
             min: 0
         },
+        entity_account: {
+            type: String,
+            default: '',
+            required: false
+        },
+        amount_paid_to: {
+            type: String,
+            default: '',
+            required: false
+        },
         total_amount_paid: {
             type: Number,
             default: 0,
