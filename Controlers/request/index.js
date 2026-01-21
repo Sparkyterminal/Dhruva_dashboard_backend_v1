@@ -885,6 +885,105 @@ module.exports.archiveRequest = async (req, res) => {
 //     }
 // };
 
+// module.exports.getRequests = async (req, res) => {
+//     const token = req.get('Authorization');
+//     let decodedToken = await jwt.decode(token);
+  
+//     // Only OWNER, ADMIN, DEPARTMENT, APPROVER can view all requests
+//     if (!['OWNER', 'ADMIN', 'DEPARTMENT', 'APPROVER'].includes(decodedToken.role)) {
+//       return res.status(STATUS.UNAUTHORISED).json({
+//         message: MESSAGE.unauthorized,
+//       });
+//     }
+  
+//     try {
+//       const status = req.query.status;
+//       const priority = req.query.priority;
+//       const department = req.query.department;
+//       const search = req.query.search?.trim();
+  
+//       const startDate = req.query.startDate ? new Date(req.query.startDate) : null;
+//       const endDate = req.query.endDate ? new Date(req.query.endDate) : null;
+//       const singleDate = req.query.date ? new Date(req.query.date) : null;
+  
+//       // Required date filter inputs
+//       const requiredDateSingle = req.query.required_date ? new Date(req.query.required_date) : null;
+//       const requiredDateStart = req.query.required_date_start ? new Date(req.query.required_date_start) : null;
+//       const requiredDateEnd = req.query.required_date_end ? new Date(req.query.required_date_end) : null;
+  
+//       let query = { is_archived: false };
+  
+//       if (status) query.status = status;
+//       if (priority) query.priority = priority;
+//       if (department) query.department = department;
+  
+//       // Date filtering for createdAt
+//       if (singleDate) {
+//         const startOfDay = new Date(singleDate);
+//         startOfDay.setHours(0, 0, 0, 0);
+  
+//         const endOfDay = new Date(singleDate);
+//         endOfDay.setHours(23, 59, 59, 999);
+  
+//         query.createdAt = { $gte: startOfDay, $lte: endOfDay };
+//       } else if (startDate && endDate) {
+//         query.createdAt = { $gte: startDate, $lte: endDate };
+//       } else if (startDate) {
+//         query.createdAt = { $gte: startDate };
+//       } else if (endDate) {
+//         query.createdAt = { $lte: endDate };
+//       }
+
+//       // Required date filtering logic
+//       if (requiredDateSingle) {
+//         const startOfDay = new Date(requiredDateSingle);
+//         startOfDay.setHours(0, 0, 0, 0);
+//         const endOfDay = new Date(requiredDateSingle);
+//         endOfDay.setHours(23, 59, 59, 999);
+//         query.required_date = { $gte: startOfDay, $lte: endOfDay };
+//       } else if (requiredDateStart && requiredDateEnd) {
+//         query.required_date = { $gte: requiredDateStart, $lte: requiredDateEnd };
+//       } else if (requiredDateStart) {
+//         query.required_date = { $gte: requiredDateStart };
+//       } else if (requiredDateEnd) {
+//         query.required_date = { $lte: requiredDateEnd };
+//       }
+  
+//       // Search filter
+//       if (search) {
+//         query.$or = [
+//           { title: { $regex: search, $options: 'i' } },
+//           { description: { $regex: search, $options: 'i' } },
+//           { 'requested_by.first_name': { $regex: search, $options: 'i' } },
+//           { 'requested_by.last_name': { $regex: search, $options: 'i' } },
+//           { 'requested_by.email_data': { $regex: search, $options: 'i' } },
+//         ];
+//       }
+  
+//       const documentCount = await Request.countDocuments(query);
+//       const requests = await Request.find(query)
+//         .sort({ createdAt: -1 })
+//         // skip() and limit() removed as per your original version
+//         .populate('requested_by', 'id first_name last_name email_data designation')
+//         .populate('department', 'id name')
+//         //.populate('handled_by', 'id first_name last_name')
+//         .populate('vendor', 'id name')
+//         .populate('event_reference', 'id clientName name')
+//         .exec();
+  
+//       return res.status(STATUS.SUCCESS).json({
+//         items: requests,
+//         totalItems: documentCount,
+//       });
+//     } catch (error) {
+//       console.error('Error fetching requests:', error);
+//       return res.status(STATUS.INTERNAL_SERVER_ERROR).json({
+//         message: MESSAGE.internalServerError,
+//         error: error.message,
+//       });
+//     }
+//   };
+
 module.exports.getRequests = async (req, res) => {
     const token = req.get('Authorization');
     let decodedToken = await jwt.decode(token);
@@ -904,7 +1003,7 @@ module.exports.getRequests = async (req, res) => {
   
       const startDate = req.query.startDate ? new Date(req.query.startDate) : null;
       const endDate = req.query.endDate ? new Date(req.query.endDate) : null;
-      const singleDate = req.query.date ? new Date(req.query.date) : null;
+      const singleDate = req.query.singleDate ? new Date(req.query.singleDate) : null;
   
       // Required date filter inputs
       const requiredDateSingle = req.query.required_date ? new Date(req.query.required_date) : null;
@@ -963,7 +1062,6 @@ module.exports.getRequests = async (req, res) => {
       const documentCount = await Request.countDocuments(query);
       const requests = await Request.find(query)
         .sort({ createdAt: -1 })
-        // skip() and limit() removed as per your original version
         .populate('requested_by', 'id first_name last_name email_data designation')
         .populate('department', 'id name')
         //.populate('handled_by', 'id first_name last_name')
@@ -982,9 +1080,10 @@ module.exports.getRequests = async (req, res) => {
         error: error.message,
       });
     }
-  };
+  };  
 
-  
+
+
 exports.getRequestsByDepartmentId = async (req, res) => {
     try {
         const departmentId = req.params.id;
