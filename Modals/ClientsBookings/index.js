@@ -4,8 +4,8 @@ const EventName = require("../events");
 const EventType = require("../eventTypes");
 
 const advanceSchema = new mongoose.Schema({
-  advanceNumber: { type: Number, required: true },
-  expectedAmount: { type: Number, required: true },
+  advanceNumber: { type: Number, required: false },
+  expectedAmount: { type: Number, required: false },
   advanceDate: { type: Date, required: true },
   status: { type: String, default: "Pending" },
 
