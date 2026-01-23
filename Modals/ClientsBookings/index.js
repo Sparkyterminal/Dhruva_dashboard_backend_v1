@@ -91,7 +91,7 @@ const eventSchema = new mongoose.Schema({
   note: { type: String },
   eventConfirmation: { 
     type: String, 
-    enum: ['Confirmed Event', 'InProgress'],
+    enum: ['Confirmed Event', 'InProgress', 'Cancelled'],
     required: false 
   },
   advancePaymentType: { 
