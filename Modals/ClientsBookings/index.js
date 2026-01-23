@@ -68,6 +68,7 @@ const eventSchema = new mongoose.Schema({
     ref: "EventName", 
     required: true 
   },
+  meetingDate: { type: Date, required: false, default: null },
   eventTypes: { type: [eventTypeSchema], default: [] },
   clientName: { type: String, required: true },
   brideName: { type: String },

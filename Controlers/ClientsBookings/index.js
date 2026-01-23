@@ -217,6 +217,7 @@ exports.createEvent = async (req, res) => {
       contactNumber,
       altContactNumber,
       altContactName,
+      meetingDate,
       lead1,
       lead2,
       note,
@@ -366,6 +367,7 @@ exports.createEvent = async (req, res) => {
       clientName: clientName.trim(),
       brideName: brideName ? brideName.trim() : undefined,
       groomName: groomName ? groomName.trim() : undefined,
+      meetingDate: meetingDate ? new Date(meetingDate) : null,
       lead1: lead1 || null,
       lead2: lead2 || null,
       contactNumber: contactNumber.trim(),
@@ -447,6 +449,7 @@ exports.updateAdvance = async (req, res) => {
     if (typeof remarks === "string") {
       advance.remarks = remarks;
     }
+
     
     // Update givenBy, collectedBy, modeOfPayment if provided
     if (req.body.givenBy !== undefined) {
@@ -732,6 +735,7 @@ exports.editEventExceptReceivedAmount = async (req, res) => {
       lead1,
       lead2,
       note,
+      meetingDate,
       eventConfirmation,
       advancePaymentType
     } = req.body;
@@ -776,6 +780,7 @@ exports.editEventExceptReceivedAmount = async (req, res) => {
     event.lead1 = lead1 !== undefined ? (lead1 || null) : event.lead1;
     event.lead2 = lead2 !== undefined ? (lead2 || null) : event.lead2;
     event.note = note ? note.trim() : undefined;
+    event.meetingDate = meetingDate ? new Date(meetingDate) : null;
     if (eventConfirmation !== undefined) {
       event.eventConfirmation = eventConfirmation || undefined;
     }
