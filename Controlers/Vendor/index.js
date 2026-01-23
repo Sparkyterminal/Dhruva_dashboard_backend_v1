@@ -1477,14 +1477,31 @@ exports.getVendorsByDepartmentId = async (req, res) => {
   }
 };
 
-// Get all vendors without auth (public)
+
 exports.getAllVendors = async (req, res) => {
   try {
-    const { search } = req.query;
+    const { search, specify_cat, vendor_type, vendor_status } = req.query;
 
     let query = {};
+    
+    // Search filter for vendor name
     if (search && search.trim()) {
       query.name = { $regex: search.trim(), $options: 'i' };
+    }
+
+    // Dropdown filter for specify_cat (cash, account, cash_and_account)
+    if (specify_cat && specify_cat.trim()) {
+      query.specify_cat = specify_cat.trim();
+    }
+
+    // Dropdown filter for vendor_type
+    if (vendor_type && vendor_type.trim()) {
+      query.vendor_type = vendor_type.trim();
+    }
+
+    // Dropdown filter for vendor_status (ACTIVE, INACTIVE)
+    if (vendor_status && vendor_status.trim()) {
+      query.vendor_status = vendor_status.trim();
     }
 
     const vendors = await Vendor.find(query)
@@ -1497,6 +1514,27 @@ exports.getAllVendors = async (req, res) => {
     res.status(500).json({ success: false, error: error.message });
   }
 };
+
+// Get all vendors without auth (public)
+// exports.getAllVendors = async (req, res) => {
+//   try {
+//     const { search } = req.query;
+
+//     let query = {};
+//     if (search && search.trim()) {
+//       query.name = { $regex: search.trim(), $options: 'i' };
+//     }
+
+//     const vendors = await Vendor.find(query)
+//       .populate('department', 'id name')
+//       .populate('vendor_belongs_to', 'id name description')
+//       .sort({ createdAt: -1 });
+
+//     res.json({ success: true, vendors });
+//   } catch (error) {
+//     res.status(500).json({ success: false, error: error.message });
+//   }
+// };
 
 // Get all vendors list with pagination and filters (authenticated)
 exports.getAllVendorsList = async (req, res) => {
