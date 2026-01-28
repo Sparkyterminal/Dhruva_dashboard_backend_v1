@@ -96,6 +96,11 @@ const requestSchema = new Schema(
             type: String,
             enum: ['APPROVED', 'REJECTED', 'PENDING'],
             default: 'PENDING'
+        },
+        ca_check: {
+            type: String,
+            enum: ['APPROVED', 'REJECTED', 'PENDING'],
+            default: 'PENDING'
         },        
         remarks: {
             type: String,
