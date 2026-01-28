@@ -378,7 +378,7 @@ module.exports.createUser = async (req, res) => {
     }
 
     // Validate role
-    if (!role || !['ADMIN', 'DEPARTMENT', 'OWNER','ACCOUNTS',"MARKETING",'APPROVER'].includes(role)) {
+    if (!role || !['ADMIN', 'DEPARTMENT', 'OWNER','ACCOUNTS',"MARKETING",'APPROVER',"CA"].includes(role)) {
         return res.status(STATUS.VALIDATION_FAILED).json({
             message: 'Invalid role. Must be one of: ADMIN, DEPARTMENT, OWNER, ACCOUNTS, MARKETING, APPROVER',
             field: 'role'
