@@ -255,8 +255,8 @@ module.exports.getAllRequests = async (req, res) => {
     const token = req.get('Authorization');
     let decodedToken = await jwt.decode(token);
   
-    // Only OWNER, ADMIN, DEPARTMENT, APPROVER can view all requests
-    if (!['OWNER', 'ADMIN', 'DEPARTMENT', 'APPROVER'].includes(decodedToken.role)) {
+    // Only OWNER, ADMIN, DEPARTMENT, APPROVER, CA can view all requests
+    if (!['OWNER', 'ADMIN', 'DEPARTMENT', 'APPROVER', 'CA'].includes(decodedToken.role)) {
       return res.status(STATUS.UNAUTHORISED).json({
         message: MESSAGE.unauthorized,
       });
@@ -467,8 +467,8 @@ module.exports.getRequestById = async (req, res) => {
     const token = req.get('Authorization');
     let decodedToken = await jwt.decode(token);
 
-    // Only OWNER and ADMIN can view specific request details
-    if (!['OWNER', 'ADMIN'].includes(decodedToken.role)) {
+    // Only OWNER, ADMIN, and CA can view specific request details
+    if (!['OWNER', 'ADMIN', 'CA'].includes(decodedToken.role)) {
         return res.status(STATUS.UNAUTHORISED).json({
             message: MESSAGE.unauthorized,
         });
@@ -518,7 +518,7 @@ module.exports.updateRequest = async (req, res) => {
     const token = req.get('Authorization');
     let decodedToken = await jwt.decode(token);
 
-    if (!['OWNER', 'DEPARTMENT', 'APPROVER'].includes(decodedToken.role)) {
+    if (!['OWNER', 'DEPARTMENT', 'APPROVER', 'CA'].includes(decodedToken.role)) {
         return res.status(STATUS.UNAUTHORISED).json({
             message: MESSAGE.unauthorized,
         });
@@ -563,6 +563,8 @@ module.exports.updateRequest = async (req, res) => {
                     updateData.owner_check = 'APPROVED';
                 } else if (decodedToken.role === 'APPROVER') {
                     updateData.approver_check = 'APPROVED';
+                } else if (decodedToken.role === 'CA') {
+                    updateData.ca_check = 'APPROVED';
                 }
             } else if (status === 'REJECTED') {
                 if (decodedToken.role === 'DEPARTMENT') {
@@ -571,6 +573,8 @@ module.exports.updateRequest = async (req, res) => {
                     updateData.owner_check = 'REJECTED';
                 } else if (decodedToken.role === 'APPROVER') {
                     updateData.approver_check = 'REJECTED';
+                } else if (decodedToken.role === 'CA') {
+                    updateData.ca_check = 'REJECTED';
                 }
             }
         }
@@ -598,11 +602,11 @@ module.exports.updateRequest = async (req, res) => {
             updateData.planned_amount = plannedAmt;
         }
 
-        // Only APPROVER role can set approver_amount
+        // Only APPROVER, OWNER, and CA roles can set approver_amount
         if (approver_amount !== undefined) {
-            if (!['OWNER', 'APPROVER'].includes(decodedToken.role)) {
+            if (!['OWNER', 'APPROVER', 'CA'].includes(decodedToken.role)) {
                 return res.status(STATUS.UNAUTHORISED).json({
-                    message: 'Only OWNER and APPROVER roles can set approver_amount',
+                    message: 'Only OWNER, APPROVER, and CA roles can set approver_amount',
                 });
             }
             const approverAmt = parseFloat(approver_amount);
@@ -988,8 +992,8 @@ module.exports.getRequests = async (req, res) => {
     const token = req.get('Authorization');
     let decodedToken = await jwt.decode(token);
   
-    // Only OWNER, ADMIN, DEPARTMENT, APPROVER can view all requests
-    if (!['OWNER', 'ADMIN', 'DEPARTMENT', 'APPROVER'].includes(decodedToken.role)) {
+    // Only OWNER, ADMIN, DEPARTMENT, APPROVER, CA can view all requests
+    if (!['OWNER', 'ADMIN', 'DEPARTMENT', 'APPROVER', 'CA'].includes(decodedToken.role)) {
       return res.status(STATUS.UNAUTHORISED).json({
         message: MESSAGE.unauthorized,
       });
