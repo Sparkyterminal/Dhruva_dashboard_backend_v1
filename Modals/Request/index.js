@@ -101,6 +101,19 @@ const requestSchema = new Schema(
             type: String,
             enum: ['APPROVED', 'REJECTED', 'PENDING'],
             default: 'PENDING'
+        },
+        ca_approved: {
+            type: Boolean,
+            default: false
+        },
+        ca_approved_by: {
+            type: ObjectId,
+            ref: 'user',
+            required: false
+        },
+        ca_approved_at: {
+            type: Date,
+            required: false
         },        
         remarks: {
             type: String,
