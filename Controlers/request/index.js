@@ -181,6 +181,7 @@ module.exports.getMyRequests = async (req, res) => {
             .limit(size)
             .populate('department', 'id name')
             .populate('vendor', 'id name vendor_code')
+            .populate('ca_approved_by', 'id first_name last_name email_data designation role')
             .populate({
                 path: 'event_reference',
                 select: 'id clientName',
@@ -220,7 +221,8 @@ module.exports.getMyRequestById = async (req, res) => {
         })
             .populate('requested_by', 'id first_name last_name')
             .populate('department', 'id name')
-            .populate('vendor', 'id name')
+            .populate('vendor', 'id name vendor_code')
+            .populate('ca_approved_by', 'id first_name last_name email_data designation role')
             .populate({
                 path: 'event_reference',
                 select: 'id clientName',
@@ -347,7 +349,8 @@ module.exports.getAllRequests = async (req, res) => {
         .limit(size)
         .populate('requested_by', 'id first_name last_name email_data designation')
         .populate('department', 'id name')
-        .populate('vendor', 'id name')
+        .populate('vendor', 'id name vendor_code')
+        .populate('ca_approved_by', 'id first_name last_name email_data designation role')
         .populate('event_reference', 'id clientName name')
         .exec();
   
@@ -483,8 +486,8 @@ module.exports.getRequestById = async (req, res) => {
         })
             .populate('requested_by', 'id first_name last_name email_data designation')
             .populate('department', 'id name')
-            // .populate('handled_by', 'id first_name last_name')
             .populate('vendor', 'id name vendor_code')
+            .populate('ca_approved_by', 'id first_name last_name email_data designation role')
             .populate({
                 path: 'event_reference',
                 select: 'id clientName',
@@ -534,7 +537,8 @@ module.exports.updateRequest = async (req, res) => {
             entity_account,
             amount_paid_to,
             remarks,
-            is_active
+            is_active,
+            ca_approved
         } = req.body;
 
         const request = await Request.findById(id);
@@ -565,6 +569,9 @@ module.exports.updateRequest = async (req, res) => {
                     updateData.approver_check = 'APPROVED';
                 } else if (decodedToken.role === 'CA') {
                     updateData.ca_check = 'APPROVED';
+                    updateData.ca_approved = true;
+                    updateData.ca_approved_by = decodedToken.uid;
+                    updateData.ca_approved_at = new Date();
                 }
             } else if (status === 'REJECTED') {
                 if (decodedToken.role === 'DEPARTMENT') {
@@ -575,6 +582,17 @@ module.exports.updateRequest = async (req, res) => {
                     updateData.approver_check = 'REJECTED';
                 } else if (decodedToken.role === 'CA') {
                     updateData.ca_check = 'REJECTED';
+                    updateData.ca_approved = false;
+                    updateData.ca_approved_by = decodedToken.uid;
+                    updateData.ca_approved_at = new Date();
+                }
+            } else if (status === 'PENDING') {
+                // Reset CA approval if status is set back to PENDING
+                if (decodedToken.role === 'CA') {
+                    updateData.ca_check = 'PENDING';
+                    updateData.ca_approved = false;
+                    updateData.ca_approved_by = null;
+                    updateData.ca_approved_at = null;
                 }
             }
         }
@@ -632,6 +650,40 @@ module.exports.updateRequest = async (req, res) => {
             updateData.is_active = is_active;
         }
 
+        // Handle CA approval directly (if CA role is updating)
+        if (ca_approved !== undefined && decodedToken.role === 'CA') {
+            if (typeof ca_approved !== 'boolean') {
+                return res.status(STATUS.VALIDATION_FAILED).json({
+                    message: 'Invalid ca_approved value. Must be a boolean',
+                    field: 'ca_approved'
+                });
+            }
+            
+            updateData.ca_approved = ca_approved;
+            updateData.ca_approved_by = decodedToken.uid;
+            updateData.ca_approved_at = new Date();
+            
+            // Update ca_check based on ca_approved value
+            if (ca_approved) {
+                updateData.ca_check = 'APPROVED';
+                // If status is not set, set it to APPROVED
+                if (status === undefined) {
+                    updateData.status = 'APPROVED';
+                }
+            } else {
+                updateData.ca_check = 'REJECTED';
+                // If status is not set, set it to REJECTED
+                if (status === undefined) {
+                    updateData.status = 'REJECTED';
+                }
+            }
+        } else if (ca_approved !== undefined && decodedToken.role !== 'CA') {
+            // Only CA role can set ca_approved
+            return res.status(STATUS.UNAUTHORISED).json({
+                message: 'Only CA role can set ca_approved field',
+            });
+        }
+
         updateData.handled_by = decodedToken.uid;
 
         if (Object.keys(updateData).length === 0) {
@@ -647,7 +699,8 @@ module.exports.updateRequest = async (req, res) => {
         )
             .populate('requested_by', 'id first_name last_name email_data designation')
             .populate('department', 'id name')
-            .populate('vendor', 'id name')
+            .populate('vendor', 'id name vendor_code')
+            .populate('ca_approved_by', 'id first_name last_name email_data designation role')
             .populate({
                 path: 'event_reference',
                 select: 'id clientName',
@@ -806,8 +859,8 @@ module.exports.archiveRequest = async (req, res) => {
         )
             .populate('requested_by', 'id first_name last_name email_data designation')
             .populate('department', 'id name')
-            // .populate('handled_by', 'id first_name last_name')
-            .populate('vendor', 'id name')
+            .populate('vendor', 'id name vendor_code')
+            .populate('ca_approved_by', 'id first_name last_name email_data designation role')
             .populate({
                 path: 'event_reference',
                 select: 'id clientName',
@@ -1068,8 +1121,8 @@ module.exports.getRequests = async (req, res) => {
         .sort({ createdAt: -1 })
         .populate('requested_by', 'id first_name last_name email_data designation')
         .populate('department', 'id name')
-        //.populate('handled_by', 'id first_name last_name')
-        .populate('vendor', 'id name')
+        .populate('vendor', 'id name vendor_code')
+        .populate('ca_approved_by', 'id first_name last_name email_data designation role')
         .populate('event_reference', 'id clientName name')
         .exec();
   
@@ -1106,7 +1159,8 @@ exports.getRequestsByDepartmentId = async (req, res) => {
         .sort({ createdAt: -1 })
         .populate('requested_by', 'id first_name last_name email_data designation')
         .populate('department', 'id name')
-        .populate('vendor', 'id name')
+        .populate('vendor', 'id name vendor_code')
+        .populate('ca_approved_by', 'id first_name last_name email_data designation role')
         .populate('event_reference', 'id clientName name')
         .exec();
 
