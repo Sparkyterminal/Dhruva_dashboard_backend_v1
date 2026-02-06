@@ -1061,6 +1061,7 @@ module.exports.getRequests = async (req, res) => {
       const startDate = req.query.startDate ? new Date(req.query.startDate) : null;
       const endDate = req.query.endDate ? new Date(req.query.endDate) : null;
       const singleDate = req.query.singleDate ? new Date(req.query.singleDate) : null;
+      const date = req.query.date ? new Date(req.query.date) : null;
   
       // Required date filter inputs
       const requiredDateSingle = req.query.required_date ? new Date(req.query.required_date) : null;
@@ -1074,7 +1075,16 @@ module.exports.getRequests = async (req, res) => {
       if (department) query.department = department;
   
       // Date filtering for createdAt
-      if (singleDate) {
+      // Priority: date > singleDate > startDate/endDate range
+      if (date) {
+        const startOfDay = new Date(date);
+        startOfDay.setHours(0, 0, 0, 0);
+  
+        const endOfDay = new Date(date);
+        endOfDay.setHours(23, 59, 59, 999);
+  
+        query.createdAt = { $gte: startOfDay, $lte: endOfDay };
+      } else if (singleDate) {
         const startOfDay = new Date(singleDate);
         startOfDay.setHours(0, 0, 0, 0);
   

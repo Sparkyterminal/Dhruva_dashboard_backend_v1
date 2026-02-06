@@ -1056,20 +1056,26 @@ const generateVendorCode = async (specify_cat) => {
   };
 
   const basePrefix = prefixMap[specify_cat] || 'SBE';
-  const regex = new RegExp(`^${basePrefix}-?(\\d+)$`, 'i');
 
-  const lastVendor = await Vendor.findOne({ vendor_code: { $regex: `^${basePrefix}-`, $options: 'i' } })
-    .sort({ createdAt: -1 })
-    .select('vendor_code')
-    .lean();
+  // Find the maximum numeric part for this prefix (not last by createdAt) to avoid duplicate keys
+  const result = await Vendor.aggregate([
+    { $match: { vendor_code: { $regex: `^${basePrefix}-`, $options: 'i' } } },
+    {
+      $addFields: {
+        num: {
+          $let: {
+            vars: { parts: { $split: ['$vendor_code', '-'] } },
+            in: { $toInt: { $arrayElemAt: ['$$parts', -1] } }
+          }
+        }
+      }
+    },
+    { $group: { _id: null, maxNum: { $max: '$num' } } }
+  ]);
 
-  let nextNumber = 1;
-  if (lastVendor && lastVendor.vendor_code) {
-    const match = lastVendor.vendor_code.match(regex);
-    if (match && !Number.isNaN(parseInt(match[1], 10))) {
-      nextNumber = parseInt(match[1], 10) + 1;
-    }
-  }
+  const nextNumber = (result[0] && result[0].maxNum != null && !Number.isNaN(result[0].maxNum))
+    ? result[0].maxNum + 1
+    : 1;
 
   const paddedNumber = String(nextNumber).padStart(2, '0');
   return `${basePrefix}-${paddedNumber}`;
