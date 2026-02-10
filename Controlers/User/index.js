@@ -101,6 +101,7 @@ module.exports.loginUsingEmail = async (req, res) => {
     if (!errors.isEmpty()) {
         return res.status(STATUS.BAD_REQUEST).json({
             message: `Bad request`,
+            errors: errors.array(),
         });
     }
 
