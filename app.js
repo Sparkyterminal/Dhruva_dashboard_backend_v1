@@ -8,39 +8,59 @@ const morgan = require("morgan");
 const helmet = require("helmet");
 const path = require("path");
 const cors = require("cors");
-const cron = require('node-cron');
-const fs = require("fs");
 
-
-
-
-cron.schedule('01 01 * * *', () => {
-    const empty_these_directories = [
-        "assets/temp_resources",
-        "assets/images",
-        "assets/documents",
-        // "assets/dis_reports",
-    ]
-    
-    empty_these_directories.map((directory) => {
-        fs.readdir(directory, (err, files) => {
-            if (err) throw err;
-    
-            for (const file of files) {
-                fs.unlink(path.join(directory, file), (err) => {
-                    if (err) throw err;
-                });
-            }
-        });
+// Cron job moved to Lambda: functions/cleanupAssets.js (EventBridge schedule)
+const isLambda = !!process.env.AWS_LAMBDA_FUNCTION_NAME;
+if (!isLambda) {
+  const cron = require('node-cron');
+  const fs = require("fs");
+  cron.schedule('01 01 * * *', () => {
+    const empty_these_directories = ["assets/temp_resources", "assets/images", "assets/documents"];
+    empty_these_directories.forEach((directory) => {
+      fs.readdir(directory, (err, files) => {
+        if (err) return;
+        for (const file of files || []) {
+          fs.unlink(path.join(directory, file), () => {});
+        }
+      });
     });
-});
+  });
+}
 
 app.use(cors());
 
 app.use(helmet.crossOriginResourcePolicy({ policy: "cross-origin" }));
 
 app.use(morgan("dev"));
-app.use(express.json({ limit: '2048mb' }));
+
+// Lambda: API Gateway can pass body in a way Express's parser misses - parse manually
+if (isLambda) {
+  app.use((req, res, next) => {
+    const ct = req.headers['content-type'] || '';
+    if (req.method !== 'GET' && req.method !== 'HEAD' && ct.includes('application/json')) {
+      const chunks = [];
+      req.on('data', (chunk) => chunks.push(chunk));
+      req.on('end', () => {
+        try {
+          req.body = chunks.length ? JSON.parse(Buffer.concat(chunks).toString('utf8')) : {};
+        } catch {
+          req.body = {};
+        }
+        next();
+      });
+      req.on('error', next);
+    } else {
+      next();
+    }
+  });
+}
+// Skip express.json for Lambda JSON requests (already parsed above)
+app.use((req, res, next) => {
+  if (isLambda && req.body !== undefined && (req.headers['content-type'] || '').includes('application/json')) {
+    return next();
+  }
+  express.json({ limit: '2048mb' })(req, res, next);
+});
 app.use(express.urlencoded({ extended: true, limit: '2048mb' }));
 
 
@@ -84,27 +104,20 @@ app.use(`${API_ROOT}sub-venue-location`, subVenueLocationRoutes);
 
 
 app.get('/', (req, res) => {
-    res.send('Hello from Node.js backend!');
-  });
-  
-  
-  
-  // Database connection
-  try {
-    const DB_URL = process.env.DB_URL || "mongodb+srv://naveengccursor_db_user:JvalSatQuJ1kcDrv@dashboarddhruva.h5rq6qe.mongodb.net/?appName=dashboarddhruva";
-    const DB_PORT = process.env.PORT || PORT;
+  res.send('Hello from Node.js backend!');
+});
 
-    mongoose.connect(DB_URL, { useNewUrlParser: true, useUnifiedTopology: true })
-        .then(() => {
-            console.log("DB Connection Successful");
-            app.listen(DB_PORT, () => {
-                console.log(`Server is running on port ${DB_PORT}`);
-            });
-        })
-        .catch(err => {
-            console.error("Error in connecting to DB:", err);
-        });
-} catch (error) {
-      console.log("Error in connecting to DB:", error);
-  }
-  
+// Database connection - runs for both Lambda and local
+const DB_URL = process.env.DB_URL || "mongodb+srv://naveengccursor_db_user:JvalSatQuJ1kcDrv@dashboarddhruva.h5rq6qe.mongodb.net/?appName=dashboarddhruva";
+
+mongoose.connect(DB_URL, { useNewUrlParser: true, useUnifiedTopology: true })
+  .then(() => {
+    console.log("DB Connection Successful");
+    if (!isLambda) {
+      const port = process.env.PORT || PORT;
+      app.listen(port, () => console.log(`Server is running on port ${port}`));
+    }
+  })
+  .catch(err => console.error("Error in connecting to DB:", err));
+
+module.exports = app;

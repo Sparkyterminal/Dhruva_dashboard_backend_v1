@@ -1,0 +1,44 @@
+service: dashboard
+
+frameworkVersion: '3'
+
+provider:
+  name: aws
+  runtime: nodejs18.x
+  stage: ${opt:stage, 'dev'}
+  region: ${opt:region, 'ap-south-1'}
+  memorySize: 1024
+  timeout: 30
+  environment:
+    NODE_ENV: ${self:provider.stage}
+    DB_URL: ${env:DB_URL, 'mongodb+srv://naveengccursor_db_user:JvalSatQuJ1kcDrv@dashboarddhruva.h5rq6qe.mongodb.net/?appName=dashboarddhruva'}
+    JWT_SECRET: ${env:JWT_SECRET, ''}
+
+  httpApi:
+    cors:
+      allowedOrigins: '*'
+      allowedHeaders: '*'
+      allowedMethods: '*'
+
+functions:
+  # Main API - all Express routes handled by single Lambda
+  api:
+    handler: handler.handler
+    events:
+      - httpApi:
+          path: /{proxy+}
+          method: ANY
+      - httpApi:
+          path: /
+          method: ANY
+
+plugins:
+  - serverless-offline
+
+package:
+  individually: true
+  patterns:
+    - '!assets/**'
+    - '!*.xlsx'
+    - '!*.md'
+    - '!PAYLOAD_EXAMPLES.md'
