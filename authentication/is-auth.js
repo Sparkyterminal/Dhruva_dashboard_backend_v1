@@ -27,7 +27,7 @@ module.exports = async (req, res, next) => {
 					    return res.status(STATUS.UNAUTHORISED).json({ message: "Your token is expired" });
 					} 
                     else {
-						req.userId = decodedToken.id;
+						req.userId = decodedToken.uid || decodedToken.id;
 						next();
 					}
 				}

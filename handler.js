@@ -4,6 +4,7 @@
  */
 const serverless = require('serverless-http');
 const app = require('./app');
+const { ensureConnected } = require('./lib/mongo');
 
 // Pre-process API Gateway event to fix common body parsing issues
 const preprocessEvent = (event) => {
@@ -31,5 +32,32 @@ const slsHandler = serverless(app, {
 });
 
 module.exports.handler = async (event, context) => {
+  // Reuse DB connection across warm Lambda invocations instead of waiting for event loop to drain
+  context.callbackWaitsForEmptyEventLoop = false;
+
+  // EventBridge scheduled warm-up — establish DB connection so user traffic avoids cold DB
+  if (event.source === 'aws.events' || event['detail-type'] === 'Scheduled Event') {
+    try {
+      await ensureConnected();
+    } catch (e) {
+      console.warn('warm: DB connect skipped', e.message);
+    }
+    return { statusCode: 200, body: 'warm' };
+  }
+
+  try {
+    await ensureConnected();
+  } catch (err) {
+    console.error('handler: database unavailable', err.message);
+    return {
+      statusCode: 503,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        message: 'Database temporarily unavailable',
+        code: 'DB_CONNECTION',
+      }),
+    };
+  }
+
   return slsHandler(preprocessEvent(event), context);
 };

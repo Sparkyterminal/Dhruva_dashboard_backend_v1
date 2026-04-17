@@ -149,34 +149,57 @@ const getMonthYear = (date) => ({
 });
 
 // Helper to generate all months between start and end date
-const generateMonthsBetween = (startDate, endDate) => {
-  const months = [];
+const generateMonthsBetween = (startDate, endDate, frequency = 'MONTHLY') => {
+  const periods = [];
   const start = new Date(startDate);
   const end = new Date(endDate);
-  
+
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return periods;
+
+  const freq = String(frequency || 'MONTHLY').toUpperCase();
+  const stepMonths = freq === 'YEARLY' ? 12 : freq === 'QUARTERLY' ? 3 : 1;
+
   let current = new Date(start.getFullYear(), start.getMonth(), 1);
   const endMonth = new Date(end.getFullYear(), end.getMonth(), 1);
-  
+
   while (current <= endMonth) {
-    months.push({
+    periods.push({
       month: current.getMonth() + 1,
-      year: current.getFullYear()
+      year: current.getFullYear(),
     });
-    current.setMonth(current.getMonth() + 1);
+    current.setMonth(current.getMonth() + stepMonths);
   }
-  
-  return months;
+
+  return periods;
 };
 
 // Create a new bill
 exports.createBill = async (req, res) => {
   try {
-    const { name, belongs_to, emi_end_date, emiType, emiDate, defaultAmount, emiStatus } = req.body;
+    const {
+      name,
+      belongs_to,
+      emi_end_date,
+      emiType,
+      emiDate,
+      startDate,
+      frequency,
+      defaultAmount,
+      emiStatus,
+    } = req.body;
 
     // Validation
-    if (!name || !belongs_to || !emi_end_date || !emiType || !emiDate || !defaultAmount) {
+    const start = startDate || emiDate;
+    if (!name || !belongs_to || !emi_end_date || !emiType || !start || !defaultAmount) {
       return res.status(400).json({ 
-        message: 'All fields are required: name, belongs_to, emi_end_date, emiType, emiDate, defaultAmount' 
+        message: 'All fields are required: name, belongs_to, emi_end_date, emiType, startDate (or emiDate), defaultAmount' 
+      });
+    }
+
+    const freq = frequency ? String(frequency).toUpperCase() : 'MONTHLY';
+    if (!['MONTHLY', 'QUARTERLY', 'YEARLY'].includes(freq)) {
+      return res.status(400).json({
+        message: 'frequency must be MONTHLY, QUARTERLY, or YEARLY',
       });
     }
 
@@ -200,7 +223,9 @@ exports.createBill = async (req, res) => {
       belongs_to, 
       emi_end_date, 
       emiType, 
-      emiDate, 
+      emiDate: start,
+      startDate: start,
+      frequency: freq,
       defaultAmount, 
       emiStatus: validatedEmiStatus 
     });
@@ -215,11 +240,11 @@ exports.createBill = async (req, res) => {
 // Get all bills with enhanced emiStatus
 exports.getBills = async (req, res) => {
   try {
-    const bills = await Bill.find().sort({ emiDate: 1 });
+    const bills = await Bill.find().sort({ startDate: 1, emiDate: 1 });
 
     const enhancedBills = bills.map(bill => {
-      // Generate all months between emiDate and emi_end_date
-      const allMonths = generateMonthsBetween(bill.emiDate, bill.emi_end_date);
+      const start = bill.startDate || bill.emiDate;
+      const allMonths = generateMonthsBetween(start, bill.emi_end_date, bill.frequency);
       
       // Merge with existing emiStatus
       const emiStatusMap = new Map();
@@ -279,8 +304,8 @@ exports.getBillById = async (req, res) => {
     const bill = await Bill.findById(req.params.id);
     if (!bill) return res.status(404).json({ message: 'Bill not found' });
 
-    // Generate all months between emiDate and emi_end_date
-    const allMonths = generateMonthsBetween(bill.emiDate, bill.emi_end_date);
+    const start = bill.startDate || bill.emiDate;
+    const allMonths = generateMonthsBetween(start, bill.emi_end_date, bill.frequency);
     
     // Merge with existing emiStatus
     const emiStatusMap = new Map();
@@ -339,6 +364,8 @@ exports.updateBill = async (req, res) => {
       emi_end_date, 
       emiType, 
       emiDate, 
+      startDate,
+      frequency,
       defaultAmount,
       emiAmount, // EMI amount for specific month
       paid, 
@@ -359,6 +386,17 @@ exports.updateBill = async (req, res) => {
     if (emi_end_date !== undefined) bill.emi_end_date = emi_end_date;
     if (emiType !== undefined) bill.emiType = emiType;
     if (emiDate !== undefined) bill.emiDate = emiDate;
+    if (startDate !== undefined) {
+      bill.startDate = startDate ? new Date(startDate) : null;
+      if (startDate) bill.emiDate = new Date(startDate); // keep backward compatibility
+    }
+    if (frequency !== undefined) {
+      const freq = String(frequency || '').toUpperCase();
+      if (freq && !['MONTHLY', 'QUARTERLY', 'YEARLY'].includes(freq)) {
+        return res.status(400).json({ message: 'frequency must be MONTHLY, QUARTERLY, or YEARLY' });
+      }
+      if (freq) bill.frequency = freq;
+    }
     if (defaultAmount !== undefined) bill.defaultAmount = defaultAmount;
 
     // Update EMI status if month/year is provided
@@ -445,9 +483,27 @@ exports.getEMIStatus = async (req, res) => {
       
       // Filter by month and year if provided
       if (month && year) {
-        filteredStatus = bill.emiStatus.filter(s => 
-          s.month === parseInt(month) && s.year === parseInt(year)
-        );
+        const m = parseInt(month, 10);
+        const y = parseInt(year, 10);
+        const freq = String(bill.frequency || 'MONTHLY').toUpperCase();
+        const step = freq === 'YEARLY' ? 12 : freq === 'QUARTERLY' ? 3 : 1;
+
+        // Only allow querying valid schedule months for this bill's frequency
+        if (step > 1) {
+          const start = bill.startDate || bill.emiDate;
+          const startMonth = start ? new Date(start).getMonth() + 1 : 1;
+          const isAligned = ((m - startMonth) % step + step) % step === 0;
+          if (!isAligned) filteredStatus = [];
+          else {
+            filteredStatus = bill.emiStatus.filter(
+              (s) => s.month === m && s.year === y
+            );
+          }
+        } else {
+          filteredStatus = bill.emiStatus.filter(
+            (s) => s.month === m && s.year === y
+          );
+        }
       }
       
       const totalEmiAmount = filteredStatus.reduce((sum, s) => sum + (s.emiAmount || 0), 0);
@@ -458,6 +514,8 @@ exports.getEMIStatus = async (req, res) => {
         billName: bill.name,
         belongs_to: bill.belongs_to,
         emiType: bill.emiType,
+        startDate: bill.startDate || bill.emiDate,
+        frequency: bill.frequency || 'MONTHLY',
         defaultAmount: bill.defaultAmount,
         totalEmiAmount,
         totalPaid,
@@ -501,6 +559,19 @@ exports.updateEMIPaymentStatus = async (req, res) => {
 
     const bill = await Bill.findById(id);
     if (!bill) return res.status(404).json({ message: 'Bill not found' });
+
+    const freq = String(bill.frequency || 'MONTHLY').toUpperCase();
+    const step = freq === 'YEARLY' ? 12 : freq === 'QUARTERLY' ? 3 : 1;
+    if (step > 1) {
+      const start = bill.startDate || bill.emiDate;
+      const startMonth = start ? new Date(start).getMonth() + 1 : 1;
+      const isAligned = ((targetMonth - startMonth) % step + step) % step === 0;
+      if (!isAligned) {
+        return res.status(400).json({
+          message: `This bill uses ${freq} frequency. month must align to the schedule.`,
+        });
+      }
+    }
 
     const index = bill.emiStatus.findIndex(s => s.month === targetMonth && s.year === targetYear);
 

@@ -206,6 +206,11 @@ const vendorSchema = new Schema(
     //   enum: ['MATERIAL', 'LABOUR', 'COMPOSITE', 'EXPENSES'],
       required: false
     },
+    material_desc: {
+      type: String,
+      required: false,
+      default: ''
+    },
     gst_no: {
       type: String,
       required: false

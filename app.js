@@ -3,7 +3,7 @@ require('dotenv').config();
 
 const app = express();
 const PORT = process.env.PORT || 4010;
-const mongoose = require("mongoose");
+const { ensureConnected } = require('./lib/mongo');
 const morgan = require("morgan");
 const helmet = require("helmet");
 const path = require("path");
@@ -68,6 +68,15 @@ const API_ROOT ='/api/'
 app.use(`${API_ROOT}assets`, express.static(path.join(__dirname, "assets")));
 app.disable('etag');
 
+// Lightweight health-check endpoint for keep-warm pings and uptime monitors
+app.get(`${API_ROOT}health`, (req, res) => {
+  res.status(200).json({
+    status: 'ok',
+    uptime: process.uptime(),
+    timestamp: new Date().toISOString(),
+  });
+});
+
 const departmentRoutes = require("./Routes/department");
 const userRoutes = require("./Routes/User");
 const counterRoutes = require("./Routes/counter");
@@ -81,6 +90,9 @@ const eventTypesRoutes = require("./Routes/eventTypes");
 const coordinatorsRoutes = require("./Routes/Coordinators");
 const venueRoutes = require("./Routes/Venue");
 const subVenueLocationRoutes = require("./Routes/SubVenueLocation");
+const budgetReportRoutes = require("./Routes/BudgetReport");
+const clientLeadRoutes = require("./Routes/ClientLead");
+const daybookRoutes = require("./Routes/daybook");
 
 
 app.use(`${API_ROOT}department`, departmentRoutes);
@@ -96,6 +108,9 @@ app.use(`${API_ROOT}event-types`, eventTypesRoutes);
 app.use(`${API_ROOT}coordinators`, coordinatorsRoutes);
 app.use(`${API_ROOT}venue`, venueRoutes);
 app.use(`${API_ROOT}sub-venue-location`, subVenueLocationRoutes);
+app.use(`${API_ROOT}budget-report`, budgetReportRoutes);
+app.use(`${API_ROOT}client-leads`, clientLeadRoutes);
+app.use(`${API_ROOT}daybook`, daybookRoutes);
 
 
 
@@ -107,17 +122,17 @@ app.get('/', (req, res) => {
   res.send('Hello from Node.js backend!');
 });
 
-// Database connection - runs for both Lambda and local
-const DB_URL = process.env.DB_URL || "mongodb+srv://naveengccursor_db_user:JvalSatQuJ1kcDrv@dashboarddhruva.h5rq6qe.mongodb.net/?appName=dashboarddhruva";
-
-mongoose.connect(DB_URL, { useNewUrlParser: true, useUnifiedTopology: true })
-  .then(() => {
-    console.log("DB Connection Successful");
-    if (!isLambda) {
+// Local server: connect before listening. Lambda connects in handler.js before each API invoke.
+if (!isLambda) {
+  ensureConnected()
+    .then(() => {
       const port = process.env.PORT || PORT;
       app.listen(port, () => console.log(`Server is running on port ${port}`));
-    }
-  })
-  .catch(err => console.error("Error in connecting to DB:", err));
+    })
+    .catch((err) => {
+      console.error('Error in connecting to DB:', err.message);
+      process.exit(1);
+    });
+}
 
 module.exports = app;

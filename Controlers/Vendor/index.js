@@ -1039,6 +1039,8 @@
 
 
 const Vendor = require('../../Modals/Vendor'); 
+const Request = require('../../Modals/Request');
+const BudgetReport = require('../../Modals/BudgetReport');
 const validations = require("../../utils/validations");
 const jwt = require('jsonwebtoken');
 const STATUS = require("../../utils/statusCodes");
@@ -1094,7 +1096,7 @@ exports.createVendor = async (req, res) => {
   const token = req.get('Authorization');
   const decodedToken = await jwt.decode(token);
   if (
-    !['ADMIN', 'OWNER', 'ACCOUNTS', 'MARKETING', 'APPROVER', 'DEPARTMENT'].includes(decodedToken.role)
+    !['ADMIN', 'OWNER', 'ACCOUNTS', 'MARKETING', 'APPROVER', 'DEPARTMENT', 'CA'].includes(decodedToken.role)
   ) {
     return res.status(STATUS.UNAUTHORISED).json({
       message: MESSAGE.unauthorized,
@@ -1127,6 +1129,7 @@ exports.createVendor = async (req, res) => {
     alt_mobile_no,
     email,
     vendor_type,
+    material_desc,
     gst_no,
     msmed_no,
     pan_no,
@@ -1246,6 +1249,7 @@ exports.createVendor = async (req, res) => {
     alt_mobile_no: alt_mobile_no ? alt_mobile_no.trim() : '',
     email: email ? email.trim() : '',
     vendor_type: vendor_type || '',
+    material_desc: material_desc ? material_desc.trim() : '',
     gst_no: gst_no ? gst_no.trim() : '',
     msmed_no: msmed_no ? msmed_no.trim() : '',
     pan_no: pan_no ? pan_no.trim() : '',
@@ -1277,6 +1281,7 @@ exports.createVendor = async (req, res) => {
         name: savedVendor.name,
         vendor_category: savedVendor.person_category,
         vendor_type: savedVendor.vendor_type,
+        material_desc: savedVendor.material_desc,
         vendor_status: savedVendor.vendor_status,
         vendor_belongs_to: savedVendor.vendor_belongs_to
       }
@@ -1372,6 +1377,11 @@ exports.updateVendor = async (req, res) => {
       updatedData.adhar_no = updatedData.adhar_no ? updatedData.adhar_no.trim() : '';
     }
 
+    // Trim material_desc if provided
+    if (updatedData.material_desc !== undefined) {
+      updatedData.material_desc = updatedData.material_desc ? updatedData.material_desc.trim() : '';
+    }
+
     // Validate specify_cat if provided
     if (updatedData.specify_cat !== undefined) {
       if (updatedData.specify_cat && !['cash', 'account', 'cash_and_account'].includes(updatedData.specify_cat)) {
@@ -1459,6 +1469,75 @@ exports.deleteVendor = async (req, res) => {
   }
 };
 
+// Production-safe delete: blocks deletion when vendor is referenced in requests or budget reports
+exports.deleteVendorSafe = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!id || !mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(STATUS.BAD_REQUEST).json({
+        success: false,
+        message: 'Valid vendor id is required',
+      });
+    }
+
+    const vendor = await Vendor.findById(id).select('_id name vendor_code').lean().maxTimeMS(20000);
+    if (!vendor) {
+      return res.status(STATUS.NOT_FOUND).json({
+        success: false,
+        message: 'Vendor not found',
+      });
+    }
+
+    const vendorObjId = new mongoose.Types.ObjectId(id);
+
+    const [requestsCount, budgetReportsCount] = await Promise.all([
+      Request.countDocuments({
+        vendor: vendorObjId,
+        is_archived: { $ne: true },
+      }).maxTimeMS(20000),
+      BudgetReport.countDocuments({
+        vendorIds: vendorObjId,
+      }).maxTimeMS(20000),
+    ]);
+
+    if (requestsCount > 0 || budgetReportsCount > 0) {
+      return res.status(409).json({
+        success: false,
+        message: 'Vendor cannot be deleted because it is referenced in other records.',
+        vendor: {
+          _id: vendor._id,
+          name: vendor.name,
+          vendor_code: vendor.vendor_code,
+        },
+        blockers: {
+          requestsCount,
+          budgetReportsCount,
+        },
+      });
+    }
+
+    await Vendor.deleteOne({ _id: vendorObjId }).maxTimeMS(20000);
+
+    return res.status(STATUS.SUCCESS).json({
+      success: true,
+      message: 'Vendor deleted successfully',
+      vendor: {
+        _id: vendor._id,
+        name: vendor.name,
+        vendor_code: vendor.vendor_code,
+      },
+    });
+  } catch (error) {
+    console.error('deleteVendorSafe:', error);
+    return res.status(STATUS.INTERNAL_SERVER_ERROR).json({
+      success: false,
+      message: MESSAGE.internalServerError || 'Internal Server Error',
+      error: error.message,
+    });
+  }
+};
+
 // Get vendors by department ID
 exports.getVendorsByDepartmentId = async (req, res) => {
   try {
@@ -1490,22 +1569,19 @@ exports.getAllVendors = async (req, res) => {
 
     let query = {};
     
-    // Search filter for vendor name
     if (search && search.trim()) {
-      query.name = { $regex: search.trim(), $options: 'i' };
+      const safe = search.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      query.name = { $regex: safe, $options: 'i' };
     }
 
-    // Dropdown filter for specify_cat (cash, account, cash_and_account)
     if (specify_cat && specify_cat.trim()) {
       query.specify_cat = specify_cat.trim();
     }
 
-    // Dropdown filter for vendor_type
     if (vendor_type && vendor_type.trim()) {
       query.vendor_type = vendor_type.trim();
     }
 
-    // Dropdown filter for vendor_status (ACTIVE, INACTIVE)
     if (vendor_status && vendor_status.trim()) {
       query.vendor_status = vendor_status.trim();
     }
@@ -1513,10 +1589,13 @@ exports.getAllVendors = async (req, res) => {
     const vendors = await Vendor.find(query)
       .populate('department', 'id name')
       .populate('vendor_belongs_to', 'id name description')
-      .sort({ createdAt: -1 });
+      .sort({ createdAt: -1 })
+      .lean()
+      .maxTimeMS(20000);
 
     res.json({ success: true, vendors });
   } catch (error) {
+    console.error('getAllVendors:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 };
@@ -1542,6 +1621,46 @@ exports.getAllVendors = async (req, res) => {
 //   }
 // };
 
+/** GET /api/vendor/minimal — _id, name, vendor_code only (for dropdowns / lookups) */
+exports.getVendorsMinimal = async (req, res) => {
+  try {
+    let query = {};
+    const search = req.query.search?.trim();
+    if (search) {
+      const safe = search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      query.$or = [
+        { name: { $regex: safe, $options: 'i' } },
+        { vendor_code: { $regex: safe, $options: 'i' } },
+      ];
+    }
+
+    const limitRaw = req.query.limit != null && req.query.limit !== '' ? parseInt(req.query.limit, 10) : null;
+    const limit = limitRaw != null && !Number.isNaN(limitRaw)
+      ? Math.min(Math.max(limitRaw, 1), 5000)
+      : 2000;
+
+    const [totalVendors, vendors] = await Promise.all([
+      Vendor.countDocuments(query).maxTimeMS(20000),
+      Vendor.find(query)
+        .select('_id name vendor_code')
+        .sort({ name: 1 })
+        .limit(limit)
+        .lean()
+        .maxTimeMS(20000),
+    ]);
+
+    res.status(200).json({
+      success: true,
+      totalVendors,
+      vendors,
+      meta: { limitReturned: vendors.length, limit },
+    });
+  } catch (error) {
+    console.error('getVendorsMinimal:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
 // Get all vendors list with pagination and filters (authenticated)
 exports.getAllVendorsList = async (req, res) => {
   try {
@@ -1551,68 +1670,62 @@ exports.getAllVendorsList = async (req, res) => {
       vendor_type, 
       vendor_status,
       vendor_belongs_to,
-      page = 1, 
-      limit = 1000000
     } = req.query;
 
-    // Build query
+    const pageInt = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const limitInt = Math.min(Math.max(1, parseInt(req.query.limit, 10) || 50), 500);
+    const skip = (pageInt - 1) * limitInt;
+
     let query = {};
 
-    // Search by name or vendor_code
     if (search && search.trim()) {
+      const safe = search.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       query.$or = [
-        { name: { $regex: search.trim(), $options: 'i' } },
-        { vendor_code: { $regex: search.trim(), $options: 'i' } }
+        { name: { $regex: safe, $options: 'i' } },
+        { vendor_code: { $regex: safe, $options: 'i' } }
       ];
     }
 
-    // Filter by department (the department field in vendor, not vendor_belongs_to)
     if (department && mongoose.Types.ObjectId.isValid(department)) {
       query.department = department;
     }
 
-    // Filter by vendor_belongs_to (the department the vendor belongs to)
     if (vendor_belongs_to && mongoose.Types.ObjectId.isValid(vendor_belongs_to)) {
       query.vendor_belongs_to = vendor_belongs_to;
     }
 
-    // Filter by vendor_type
     if (vendor_type && vendor_type.trim()) {
       query.vendor_type = vendor_type.trim();
     }
 
-    // Filter by vendor_status
     if (vendor_status && ['ACTIVE', 'INACTIVE'].includes(vendor_status)) {
       query.vendor_status = vendor_status;
     }
 
-    // Pagination
-    const pageInt = parseInt(page);
-    const limitInt = parseInt(limit);
-    const skip = (pageInt - 1) * limitInt;
-
-    // Get total count
-    const totalVendors = await Vendor.countDocuments(query);
-
-    // Get vendors with pagination
-    const vendors = await Vendor.find(query)
-      .populate('department', 'id name')
-      .populate('vendor_belongs_to', 'id name description')
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(limitInt);
+    const [totalVendors, vendors] = await Promise.all([
+      Vendor.countDocuments(query).maxTimeMS(20000),
+      Vendor.find(query)
+        .populate('department', 'id name')
+        .populate('vendor_belongs_to', 'id name description')
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limitInt)
+        .lean()
+        .maxTimeMS(20000),
+    ]);
 
     res.json({ 
       success: true, 
       vendors,
       pagination: {
         currentPage: pageInt,
-        totalPages: Math.ceil(totalVendors / limitInt),
+        totalPages: Math.ceil(totalVendors / limitInt) || 1,
         totalVendors,
         limit: limitInt
       }
     });
   } catch (error) {
+    console.error('getAllVendorsList:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 };

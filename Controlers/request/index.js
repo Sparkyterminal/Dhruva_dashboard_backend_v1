@@ -9,6 +9,44 @@ const Department = require("../../Modals/Department");
 
 const JWT_SECRET = process.env.JWT_SECRET;
 
+/** Pagination: default and max page size for request list APIs */
+const PAGINATION = {
+  DEFAULT_PAGE: 1,
+  DEFAULT_SIZE: 20,
+  MAX_SIZE: 100,
+  MIN_PAGE: 1,
+};
+
+/**
+ * Parses and validates pagination query params. Returns { page, size } or null if invalid.
+ * @param {object} query - req.query
+ * @returns {{ page: number, size: number } | null}
+ */
+function parsePagination(query) {
+  const page = Math.max(PAGINATION.MIN_PAGE, parseInt(query.page, 10) || PAGINATION.DEFAULT_PAGE);
+  const size = Math.min(
+    PAGINATION.MAX_SIZE,
+    Math.max(1, parseInt(query.size, 10) || parseInt(query.limit, 10) || PAGINATION.DEFAULT_SIZE)
+  );
+  if (page < PAGINATION.MIN_PAGE || size < 1 || size > PAGINATION.MAX_SIZE) return null;
+  return { page, size };
+}
+
+/**
+ * Resolve department query param to ObjectId. Accepts either MongoDB ObjectId or department name (case-insensitive).
+ * @param {string} department - department ID or name from query
+ * @returns {Promise<ObjectId|null>}
+ */
+async function resolveDepartmentId(department) {
+  if (!department || typeof department !== 'string') return null;
+  const trimmed = department.trim();
+  if (mongoose.Types.ObjectId.isValid(trimmed) && String(new mongoose.Types.ObjectId(trimmed)) === trimmed) {
+    return trimmed;
+  }
+  const dep = await Department.findOne({ name: { $regex: new RegExp(`^${trimmed.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') } }).select('_id').lean();
+  return dep ? dep._id : null;
+}
+
 module.exports.createRequest = async (req, res) => {
     const errors = validationResult(req);
 
@@ -265,35 +303,55 @@ module.exports.getAllRequests = async (req, res) => {
     }
   
     try {
-      const page = parseInt(req.query.page) || 1;
-      const size = parseInt(req.query.size) || 10;
+      const pagination = parsePagination(req.query);
+      if (!pagination) {
+        return res.status(STATUS.BAD_REQUEST).json({
+          message: 'Invalid pagination',
+          details: `page must be >= ${PAGINATION.MIN_PAGE}, size between 1 and ${PAGINATION.MAX_SIZE}`,
+        });
+      }
+      const { page, size } = pagination;
+
       const status = req.query.status;
       const priority = req.query.priority;
       const department = req.query.department;
+      const accountsCheck = req.query.accounts_check;
+      const caCheck = req.query.ca_check;
+      const ownerCheck = req.query.owner_check;
+      const approverCheck = req.query.approver_check;
+      const eventId = req.query.event || req.query.eventId;
+      const vendorId = req.query.vendor || req.query.vendorId;
       const search = req.query.search?.trim();
   
-      // Date filter inputs for createdAt
-      const singleCreatedAtDate = req.query.date ? new Date(req.query.date) : null;
-      const startDate = req.query.startDate ? new Date(req.query.startDate) : null;
-      const endDate = req.query.endDate ? new Date(req.query.endDate) : null;
+      // Date filter for createdAt (startDate, endDate)
+      const parseDate = (value) => {
+        if (!value) return null;
+        const d = new Date(value);
+        return Number.isNaN(d.getTime()) ? null : d;
+      };
+      const startDate = parseDate(req.query.startDate);
+      const endDate = parseDate(req.query.endDate);
   
-      // Required date filter inputs (support both required_date and singleDate for convenience)
-      const requiredDateSingle = req.query.required_date
-        ? new Date(req.query.required_date)
-        : req.query.singleDate
-        ? new Date(req.query.singleDate)
-        : null;
-      const requiredDateStart = req.query.required_date_start ? new Date(req.query.required_date_start) : null;
-      const requiredDateEnd = req.query.required_date_end ? new Date(req.query.required_date_end) : null;
+      // Required date filter (start and end only)
+      const requiredDateStart = parseDate(req.query.required_date_start);
+      const requiredDateEnd = parseDate(req.query.required_date_end);
   
-      let query = { is_archived: false };
+      // include docs where is_archived is false or missing
+      let query = { is_archived: { $ne: true } };
   
-      // Apply filters
+      // Apply filters (department: ID or name, e.g. ACCOUNTS)
       if (status) query.status = status;
       if (priority) query.priority = priority;
-      if (department) query.department = department;
+      const departmentId = await resolveDepartmentId(department);
+      if (departmentId) query.department = departmentId;
+      if (accountsCheck) query.accounts_check = accountsCheck;
+      if (caCheck) query.ca_check = caCheck;
+      if (ownerCheck) query.owner_check = ownerCheck;
+      if (approverCheck) query.approver_check = approverCheck;
+      if (eventId && mongoose.Types.ObjectId.isValid(eventId)) query.event_reference = eventId;
+      if (vendorId && mongoose.Types.ObjectId.isValid(vendorId)) query.vendor = vendorId;
   
-      // Date filtering logic for createdAt (only start/end date; singleDate is used for required_date)
+      // Date filtering for createdAt (startDate, endDate)
       if (startDate && endDate) {
         query.createdAt = { $gte: startDate, $lte: endDate };
       } else if (startDate) {
@@ -302,14 +360,8 @@ module.exports.getAllRequests = async (req, res) => {
         query.createdAt = { $lte: endDate };
       }
 
-      // Required date filtering logic
-      if (requiredDateSingle) {
-        const startOfDay = new Date(requiredDateSingle);
-        startOfDay.setHours(0, 0, 0, 0);
-        const endOfDay = new Date(requiredDateSingle);
-        endOfDay.setHours(23, 59, 59, 999);
-        query.required_date = { $gte: startOfDay, $lte: endOfDay };
-      } else if (requiredDateStart && requiredDateEnd) {
+      // Required date filtering (start and end only)
+      if (requiredDateStart && requiredDateEnd) {
         query.required_date = { $gte: requiredDateStart, $lte: requiredDateEnd };
       } else if (requiredDateStart) {
         query.required_date = { $gte: requiredDateStart };
@@ -342,23 +394,42 @@ module.exports.getAllRequests = async (req, res) => {
         }
       }
   
-      const documentCount = await Request.countDocuments(query);
-      const requests = await Request.find(query)
-        .sort({ createdAt: -1 })
-        .skip((page - 1) * size)
-        .limit(size)
-        .populate('requested_by', 'id first_name last_name email_data designation')
-        .populate('department', 'id name')
-        .populate('vendor', 'id name vendor_code')
-        .populate('ca_approved_by', 'id first_name last_name email_data designation role')
-        .populate('event_reference', 'id clientName name')
-        .exec();
-  
+      const [documentCount, requests] = await Promise.all([
+        Request.countDocuments(query),
+        Request.find(query)
+          .sort({ createdAt: -1 })
+          .skip((page - 1) * size)
+          .limit(size)
+          .populate('requested_by', 'id first_name last_name email_data designation')
+          .populate('department', 'id name')
+          .populate('vendor', 'id name vendor_code')
+          .populate('ca_approved_by', 'id first_name last_name email_data designation role')
+          .populate('event_reference', 'id clientName name')
+          .lean()
+          .exec(),
+      ]);
+
+      const departmentWiseItems = requests.reduce((acc, reqItem) => {
+        const depName =
+          (reqItem.department && reqItem.department.name) || 'Unassigned';
+        if (!acc[depName]) acc[depName] = [];
+        acc[depName].push(reqItem);
+        return acc;
+      }, {});
+
+      const totalPages = Math.ceil(documentCount / size) || 1;
+
       return res.status(STATUS.SUCCESS).json({
-        currentPage: page,
         items: requests,
+        departmentWiseItems,
         totalItems: documentCount,
-        totalPages: Math.ceil(documentCount / size),
+        pagination: {
+          currentPage: page,
+          totalPages,
+          size,
+          hasNextPage: page < totalPages,
+          hasPreviousPage: page > 1,
+        },
       });
     } catch (error) {
       console.error('Error fetching requests:', error);
@@ -1053,46 +1124,55 @@ module.exports.getRequests = async (req, res) => {
     }
   
     try {
+      const pagination = parsePagination(req.query);
+      if (!pagination) {
+        return res.status(STATUS.BAD_REQUEST).json({
+          message: 'Invalid pagination',
+          details: `page must be >= ${PAGINATION.MIN_PAGE}, size between 1 and ${PAGINATION.MAX_SIZE}`,
+        });
+      }
+      const { page, size } = pagination;
+
       const status = req.query.status;
       const priority = req.query.priority;
       const department = req.query.department;
+      const accountsCheck = req.query.accounts_check;
+      const caCheck = req.query.ca_check;
+      const ownerCheck = req.query.owner_check;
+      const approverCheck = req.query.approver_check;
+      const eventId = req.query.event || req.query.eventId;
+      const vendorId = req.query.vendor || req.query.vendorId;
       const search = req.query.search?.trim();
-  
-      const startDate = req.query.startDate ? new Date(req.query.startDate) : null;
-      const endDate = req.query.endDate ? new Date(req.query.endDate) : null;
-      const singleDate = req.query.singleDate ? new Date(req.query.singleDate) : null;
-      const date = req.query.date ? new Date(req.query.date) : null;
-  
-      // Required date filter inputs
-      const requiredDateSingle = req.query.required_date ? new Date(req.query.required_date) : null;
-      const requiredDateStart = req.query.required_date_start ? new Date(req.query.required_date_start) : null;
-      const requiredDateEnd = req.query.required_date_end ? new Date(req.query.required_date_end) : null;
-  
-      let query = { is_archived: false };
+
+      const parseDate = (value) => {
+        if (!value) return null;
+        const d = new Date(value);
+        return Number.isNaN(d.getTime()) ? null : d;
+      };
+
+      const startDate = parseDate(req.query.startDate);
+      const endDate = parseDate(req.query.endDate);
+
+      // Required date filter inputs (start/end only)
+      const requiredDateStart = parseDate(req.query.required_date_start);
+      const requiredDateEnd = parseDate(req.query.required_date_end);
+
+      // include docs where is_archived is false or missing
+      let query = { is_archived: { $ne: true } };
   
       if (status) query.status = status;
       if (priority) query.priority = priority;
-      if (department) query.department = department;
+      const departmentId = await resolveDepartmentId(department);
+      if (departmentId) query.department = departmentId;
+      if (accountsCheck) query.accounts_check = accountsCheck;
+      if (caCheck) query.ca_check = caCheck;
+      if (ownerCheck) query.owner_check = ownerCheck;
+      if (approverCheck) query.approver_check = approverCheck;
+      if (eventId && mongoose.Types.ObjectId.isValid(eventId)) query.event_reference = eventId;
+      if (vendorId && mongoose.Types.ObjectId.isValid(vendorId)) query.vendor = vendorId;
   
-      // Date filtering for createdAt
-      // Priority: date > singleDate > startDate/endDate range
-      if (date) {
-        const startOfDay = new Date(date);
-        startOfDay.setHours(0, 0, 0, 0);
-  
-        const endOfDay = new Date(date);
-        endOfDay.setHours(23, 59, 59, 999);
-  
-        query.createdAt = { $gte: startOfDay, $lte: endOfDay };
-      } else if (singleDate) {
-        const startOfDay = new Date(singleDate);
-        startOfDay.setHours(0, 0, 0, 0);
-  
-        const endOfDay = new Date(singleDate);
-        endOfDay.setHours(23, 59, 59, 999);
-  
-        query.createdAt = { $gte: startOfDay, $lte: endOfDay };
-      } else if (startDate && endDate) {
+      // Date filtering for createdAt (start/end only)
+      if (startDate && endDate) {
         query.createdAt = { $gte: startDate, $lte: endDate };
       } else if (startDate) {
         query.createdAt = { $gte: startDate };
@@ -1100,14 +1180,8 @@ module.exports.getRequests = async (req, res) => {
         query.createdAt = { $lte: endDate };
       }
 
-      // Required date filtering logic
-      if (requiredDateSingle) {
-        const startOfDay = new Date(requiredDateSingle);
-        startOfDay.setHours(0, 0, 0, 0);
-        const endOfDay = new Date(requiredDateSingle);
-        endOfDay.setHours(23, 59, 59, 999);
-        query.required_date = { $gte: startOfDay, $lte: endOfDay };
-      } else if (requiredDateStart && requiredDateEnd) {
+      // Required date filtering logic (start/end only)
+      if (requiredDateStart && requiredDateEnd) {
         query.required_date = { $gte: requiredDateStart, $lte: requiredDateEnd };
       } else if (requiredDateStart) {
         query.required_date = { $gte: requiredDateStart };
@@ -1125,19 +1199,44 @@ module.exports.getRequests = async (req, res) => {
           { 'requested_by.email_data': { $regex: search, $options: 'i' } },
         ];
       }
-  
-      const documentCount = await Request.countDocuments(query);
-      const requests = await Request.find(query)
-        .sort({ createdAt: -1 })
-        .populate('requested_by', 'id first_name last_name email_data designation')
-        .populate('department', 'id name')
-        .populate('vendor', 'id name vendor_code')
-        .populate('ca_approved_by', 'id first_name last_name email_data designation role')
-        .populate('event_reference', 'id clientName name')
-        .exec();
-  
+ 
+      // Efficient DB-side pagination: only fetch one page, not all documents
+      const [documentCount, requests] = await Promise.all([
+        Request.countDocuments(query),
+        Request.find(query)
+          .sort({ createdAt: -1 })
+          .skip((page - 1) * size)
+          .limit(size)
+          .populate('requested_by', 'id first_name last_name email_data designation')
+          .populate('department', 'id name')
+          .populate('vendor', 'id name vendor_code')
+          .populate('ca_approved_by', 'id first_name last_name email_data designation role')
+          .populate('event_reference', 'id clientName name')
+          .lean()
+          .exec(),
+      ]);
+
+      // Group only the current page by department for response shape
+      const departmentWiseItems = requests.reduce((acc, reqItem) => {
+        const depName =
+          (reqItem.department && reqItem.department.name) || 'Unassigned';
+        if (!acc[depName]) acc[depName] = [];
+        acc[depName].push(reqItem);
+        return acc;
+      }, {});
+
+      const totalPages = Math.ceil(documentCount / size) || 1;
+
       return res.status(STATUS.SUCCESS).json({
-        items: requests,
+        departments: departmentWiseItems,
+        pagination: {
+          currentPage: page,
+          totalPages,
+          size,
+          totalItems: documentCount,
+          hasNextPage: page < totalPages,
+          hasPreviousPage: page > 1,
+        },
         totalItems: documentCount,
       });
     } catch (error) {

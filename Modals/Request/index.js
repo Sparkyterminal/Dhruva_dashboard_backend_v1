@@ -149,6 +149,15 @@ const requestSchema = new Schema(
     }
 );
 
+// Performance indexes to keep request listing APIs fast and avoid timeouts
+requestSchema.index({ is_archived: 1, createdAt: -1 });
+requestSchema.index({ is_archived: 1, department: 1, createdAt: -1 });
+requestSchema.index({ is_archived: 1, status: 1, createdAt: -1 });
+requestSchema.index({ is_archived: 1, event_reference: 1, createdAt: -1 });
+requestSchema.index({ is_archived: 1, vendor: 1, createdAt: -1 });
+requestSchema.index({ is_archived: 1, required_date: 1 });
+requestSchema.index({ is_archived: 1, accounts_check: 1, ca_check: 1, owner_check: 1, approver_check: 1 });
+
 requestSchema.set("toJSON", {
     transform: (doc, ret, options) => {
         ret.id = ret._id;

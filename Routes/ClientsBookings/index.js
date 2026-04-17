@@ -35,14 +35,26 @@ router.patch("/:eventId/event-types/:eventTypeId/advances/:advanceNumber", isAut
 // Get my events (must be before /:eventId route)
 router.get("/my-events", isAuth, eventController.getMyEvents);
 
+// Lightweight list: booking id + event type name only (before /:eventId)
+router.get("/minimal", eventController.getAllEventsMinimal);
+
+// Leaderboard by creator (bookings count or amount) — before /:eventId
+router.get("/leaderboard", eventController.getLeaderboard);
+
+// Confirmed events balance sheet (payable − received) — before /:eventId
+router.get("/balance-sheet", isAuth, eventController.getConfirmedEventsBalanceSheet);
+
+// List all events — MUST be registered before /:eventId so "/" is not captured as an id (Express 5)
+router.get("/", eventController.getAllEvents);
+
 // Get event details by ID
 router.get("/:eventId", isAuth, eventController.getEvent);
 
-// Get all events with pagination
-router.get("/", eventController.getAllEvents);
-
 // Edit event details except receivedAmount in advances
 router.put("/:eventId/edit", isAuth, eventController.editEventExceptReceivedAmount);
+
+// Delete event (booking)
+router.delete("/:eventId", isAuth, eventController.deleteEvent);
 
 module.exports = router;
 

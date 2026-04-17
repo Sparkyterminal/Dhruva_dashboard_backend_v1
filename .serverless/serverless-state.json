@@ -7,14 +7,14 @@
     "provider": {
       "name": "aws",
       "runtime": "nodejs18.x",
-      "stage": "prod",
+      "stage": "dev",
       "region": "ap-south-1",
       "memorySize": 1024,
-      "timeout": 30,
+      "timeout": 29,
       "environment": {
-        "NODE_ENV": "prod",
+        "NODE_ENV": "dev",
         "DB_URL": "mongodb+srv://naveengccursor_db_user:JvalSatQuJ1kcDrv@dashboarddhruva.h5rq6qe.mongodb.net/?appName=dashboarddhruva",
-        "JWT_SECRET": ""
+        "JWT_SECRET": "your-temporary-secret-change-this-in-production"
       },
       "httpApi": {
         "cors": {
@@ -106,7 +106,7 @@
           "ApiLogGroup": {
             "Type": "AWS::Logs::LogGroup",
             "Properties": {
-              "LogGroupName": "/aws/lambda/dashboard-prod-api"
+              "LogGroupName": "/aws/lambda/dashboard-dev-api"
             }
           },
           "IamRoleLambdaExecution": {
@@ -135,7 +135,7 @@
                       "-",
                       [
                         "dashboard",
-                        "prod",
+                        "dev",
                         "lambda"
                       ]
                     ]
@@ -152,7 +152,7 @@
                         ],
                         "Resource": [
                           {
-                            "Fn::Sub": "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/dashboard-prod*:*"
+                            "Fn::Sub": "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/dashboard-dev*:*"
                           }
                         ]
                       },
@@ -163,7 +163,7 @@
                         ],
                         "Resource": [
                           {
-                            "Fn::Sub": "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/dashboard-prod*:*:*"
+                            "Fn::Sub": "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/dashboard-dev*:*:*"
                           }
                         ]
                       }
@@ -177,7 +177,7 @@
                   "-",
                   [
                     "dashboard",
-                    "prod",
+                    "dev",
                     {
                       "Ref": "AWS::Region"
                     },
@@ -194,18 +194,18 @@
                 "S3Bucket": {
                   "Ref": "ServerlessDeploymentBucket"
                 },
-                "S3Key": "serverless/dashboard/prod/1770450529475-2026-02-07T07:48:49.475Z/api.zip"
+                "S3Key": "serverless/dashboard/dev/1776406355675-2026-04-17T06:12:35.675Z/api.zip"
               },
               "Handler": "handler.handler",
               "Runtime": "nodejs18.x",
-              "FunctionName": "dashboard-prod-api",
+              "FunctionName": "dashboard-dev-api",
               "MemorySize": 1024,
-              "Timeout": 30,
+              "Timeout": 29,
               "Environment": {
                 "Variables": {
-                  "NODE_ENV": "prod",
+                  "NODE_ENV": "dev",
                   "DB_URL": "mongodb+srv://naveengccursor_db_user:JvalSatQuJ1kcDrv@dashboarddhruva.h5rq6qe.mongodb.net/?appName=dashboarddhruva",
-                  "JWT_SECRET": ""
+                  "JWT_SECRET": "your-temporary-secret-change-this-in-production"
                 }
               },
               "Role": {
@@ -219,20 +219,20 @@
               "ApiLogGroup"
             ]
           },
-          "ApiLambdaVersionDSWFIUbNennLIsrgGv8lR7rnLNG6HS5onnUz2czg0": {
+          "ApiLambdaVersionyWHp969NRj2fIO51gtfb8qf7MfNkA9t4iWcsyqxYxo": {
             "Type": "AWS::Lambda::Version",
             "DeletionPolicy": "Retain",
             "Properties": {
               "FunctionName": {
                 "Ref": "ApiLambdaFunction"
               },
-              "CodeSha256": "3VsRfyNgf2fg4IM2B7X4+hdiXgU2RkZwjycVsehwa2o="
+              "CodeSha256": "V+Ut/LunFBiTqFDv4nRSdHUgQUtF3oQ2nNVoM6F/6wo="
             }
           },
           "HttpApi": {
             "Type": "AWS::ApiGatewayV2::Api",
             "Properties": {
-              "Name": "prod-dashboard",
+              "Name": "dev-dashboard",
               "ProtocolType": "HTTP",
               "CorsConfiguration": {
                 "AllowHeaders": [
@@ -360,16 +360,16 @@
               "Ref": "ServerlessDeploymentBucket"
             },
             "Export": {
-              "Name": "sls-dashboard-prod-ServerlessDeploymentBucketName"
+              "Name": "sls-dashboard-dev-ServerlessDeploymentBucketName"
             }
           },
           "ApiLambdaFunctionQualifiedArn": {
             "Description": "Current Lambda function version",
             "Value": {
-              "Ref": "ApiLambdaVersionDSWFIUbNennLIsrgGv8lR7rnLNG6HS5onnUz2czg0"
+              "Ref": "ApiLambdaVersionyWHp969NRj2fIO51gtfb8qf7MfNkA9t4iWcsyqxYxo"
             },
             "Export": {
-              "Name": "sls-dashboard-prod-ApiLambdaFunctionQualifiedArn"
+              "Name": "sls-dashboard-dev-ApiLambdaFunctionQualifiedArn"
             }
           },
           "HttpApiId": {
@@ -378,7 +378,7 @@
               "Ref": "HttpApi"
             },
             "Export": {
-              "Name": "sls-dashboard-prod-HttpApiId"
+              "Name": "sls-dashboard-dev-HttpApiId"
             }
           },
           "HttpApiUrl": {
@@ -403,7 +403,7 @@
               ]
             },
             "Export": {
-              "Name": "sls-dashboard-prod-HttpApiUrl"
+              "Name": "sls-dashboard-dev-HttpApiUrl"
             }
           }
         }
@@ -517,15 +517,15 @@
             "resolvedPath": "/"
           }
         ],
-        "name": "dashboard-prod-api",
+        "name": "dashboard-dev-api",
         "package": {
           "artifact": "/Users/ceg/Desktop/Dashboard/.serverless/api.zip"
         },
         "memory": 1024,
-        "timeout": 30,
+        "timeout": 29,
         "runtime": "nodejs18.x",
         "vpc": {},
-        "versionLogicalId": "ApiLambdaVersionDSWFIUbNennLIsrgGv8lR7rnLNG6HS5onnUz2czg0"
+        "versionLogicalId": "ApiLambdaVersionyWHp969NRj2fIO51gtfb8qf7MfNkA9t4iWcsyqxYxo"
       }
     },
     "configValidationMode": "warn",
@@ -550,8 +550,8 @@
           "!*.md",
           "!PAYLOAD_EXAMPLES.md"
         ],
-        "artifactsS3KeyDirname": "serverless/dashboard/prod/code-artifacts",
-        "artifactDirectoryName": "serverless/dashboard/prod/1770450529475-2026-02-07T07:48:49.475Z"
+        "artifactsS3KeyDirname": "serverless/dashboard/dev/code-artifacts",
+        "artifactDirectoryName": "serverless/dashboard/dev/1776406355675-2026-04-17T06:12:35.675Z"
       }
     },
     "layers": {},
@@ -559,7 +559,7 @@
   },
   "package": {
     "individually": true,
-    "artifactDirectoryName": "serverless/dashboard/prod/1770450529475-2026-02-07T07:48:49.475Z",
+    "artifactDirectoryName": "serverless/dashboard/dev/1776406355675-2026-04-17T06:12:35.675Z",
     "artifact": ""
   }
 }

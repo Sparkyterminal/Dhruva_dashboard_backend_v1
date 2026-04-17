@@ -8,11 +8,12 @@ provider:
   stage: ${opt:stage, 'dev'}
   region: ${opt:region, 'ap-south-1'}
   memorySize: 1024
-  timeout: 30
+  # API Gateway HTTP API max integration timeout is 30s; use 29 to avoid 504
+  timeout: 29
   environment:
     NODE_ENV: ${self:provider.stage}
     DB_URL: ${env:DB_URL, 'mongodb+srv://naveengccursor_db_user:JvalSatQuJ1kcDrv@dashboarddhruva.h5rq6qe.mongodb.net/?appName=dashboarddhruva'}
-    JWT_SECRET: ${env:JWT_SECRET, ''}
+    JWT_SECRET: ${env:JWT_SECRET, 'your-temporary-secret-change-this-in-production'}
 
   httpApi:
     cors:

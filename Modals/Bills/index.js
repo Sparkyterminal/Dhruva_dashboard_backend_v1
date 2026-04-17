@@ -78,6 +78,19 @@ const billSchema = new mongoose.Schema({
     required: true,
     trim: true,
   },
+  // New: explicit EMI schedule start date (preferred)
+  startDate: {
+    type: Date,
+    required: false,
+    default: null,
+  },
+  // New: EMI frequency for schedule generation
+  frequency: {
+    type: String,
+    enum: ['MONTHLY', 'QUARTERLY', 'YEARLY'],
+    default: 'MONTHLY',
+    required: false,
+  },
   emi_end_date: {
     type: Date,
     required: true,
