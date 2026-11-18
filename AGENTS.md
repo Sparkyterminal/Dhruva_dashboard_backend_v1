@@ -351,8 +351,8 @@ by Accounts.
 ### `/spreadsheet-workbooks` (Univer Sheets snapshots, collection `spreadsheetworkbooks`)
 JWT plus roles (all 7), **except `module=client-leads`, which is public**.
 Modules: `client-leads` (key `default`), `budget-report` (key = event `_id`; the event must be
-Confirmed Event or InProgress), `daily-expenses`, `daybook-inflow`, `daybook-outflow` (key =
-YYYY-MM-DD).
+Confirmed Event or InProgress), `daybook-inflow`, `daybook-outflow` (key = YYYY-MM-DD).
+`daily-expenses` was removed on 2026-11-18 and now returns 400 (replaced by `/everyday-expenses`).
 - GET `?module&key` returns one workbook. A missing workbook returns a 200 with
   `workbookData:null, version:0`. GET `?module&list=1[&date|from|to]` returns metadata only.
 - PUT `/`: upsert. **Optimistic locking:** when updating, `version` must match, or the API
@@ -513,11 +513,8 @@ Fix these only when asked. Don't "fix" them silently as part of an unrelated tas
 17. Everyday Expenses is live (2026-11-18). The bills bucket `dashboard-dev-expense-bills-661296494264`
     has `DeletionPolicy: Retain`, so it survives stack removal. Its CORS allows all origins (`*`);
     narrow it to the app's domains once they're known.
-18. **Old Daily Expenses removal (contract §9) is pending the owner's go-ahead:**
-    `spreadsheetworkbooks` `module:"daily-expenses"` (6 rows on 2026-11-18), then removing
-    `daily-expenses` from `ALLOWED_MODULES` in `Controlers/SpreadsheetWorkbook`. When matching
-    `/expense/i`, **never** drop the new `everydayexpenses`, `expensecategories`,
-    `expensegrades`, `expensesettings` or `everydayexpenseaudits` collections.
+18. ~~Old Daily Expenses removal~~ **Done 2026-11-18** (see the change log). The backup is outside git at
+    `~/Desktop/Projects/Dhruva/backups/daily-expenses-legacy-2026-11-18/`.
 
 ## 13. Maintenance protocol (MANDATORY)
 
@@ -554,6 +551,7 @@ Newest first. Use the format: `| date | who | files | summary |`
 
 | Date | Who | Files | Summary |
 |---|---|---|---|
+| 2026-11-18 | Claude (agent) | live DB, `Controlers/SpreadsheetWorkbook`, `Routes/SpreadsheetWorkbook`, `Modals/SpreadsheetWorkbook`, contract, `AGENTS.md` | Ran Everyday Expenses contract §9 on the owner's go-ahead. Looked first: 6 `daily-expenses` workbooks, and no older Expenses collection (every `/expense/i` collection belongs to the new module). Backed up with mongoexport (6 rows), deleted the 6 rows (abort guard on the count), and verified that budget-report (28), client-leads (1) and the new collections are untouched. Removed `daily-expenses` from `ALLOWED_MODULES`/`DATE_KEY_MODULES` (GET/PUT/DELETE now return 400, checked against the controller). **Deployed 2026-11-18** (env hashes unchanged). Live: `daily-expenses` GET → 400 Unsupported module; budget-report list still 28; health 200. |
 | 2026-11-18 | Claude (agent) | `Controlers/EverydayExpenses` (new), `Routes/EverydayExpenses` (new, + contract), `Modals/EverydayExpenses/*` (new), `utils/everydayExpenses.js`, `utils/billStorage.js`, `utils/clock.js` (new), `app.js`, `serverless.yml` (S3 bucket, IAM, env), `package.json` (`@aws-sdk/client-s3`, `@aws-sdk/s3-request-presigner`), `Routes/API_DOCS_INDEX.md`, `AGENTS.md` | Implemented the Everyday Expenses contract: reviewer rules (from the DB; ADMIN 403), the rules engine with a snapshot on each entry, the IST lock with `409 LOCKED`, S3 presigned bills with prefix and HeadObject checks, per-id reject/repay, 14 seed categories, the indexes and an insert-only audit log. Tested in-process on a local MongoDB with S3 stubbed and the clock pinned: 114 checks, including all 20 worked examples. Presigned PUT verified offline to sign content-type and content-length. **Deployed 2026-11-18** (same URL, env hashes unchanged); this created bucket `dashboard-dev-expense-bills-661296494264`. Bucket check: public access fully blocked, AES256, TLS-only policy, owner-enforced ACLs. Live check: no token or unknown user → 401; `/me` 200 (this created the default settings doc); presign → PUT with the wrong Content-Type is refused with 403, the correct PUT returns 200; signed GET bytes match; unsigned GET 403; the test object was deleted (bucket empty). Seed categories are inserted on the first `/categories` call. **Contract §9 (old Daily Expenses removal) not run.** |
 | 2026-11-18 | Claude (agent) | `Controlers/request` (`bulkUpdateCaCheck`), `Routes/request/index.js`, `Routes/request/REQUESTS_FRONTEND.md`, `AGENTS.md` | Added `PATCH /request/ca-check/bulk` for the CA bulk approve/reject screen (frontend spec CA_BULK_APPROVE_BACKEND.md). It mirrors the per-row CA `ca_approved` update, changes only PENDING requests, caps ids at 200 and returns a per-id result. Tested on a local MongoDB (16 checks, including field-for-field parity with the per-row PATCH). **Deployed 2026-11-18** to `dashboard-dev` with the `dhruva-deploy` profile (same URL; env hashes unchanged). Live: no token → 401, OWNER → 401, CA with empty ids → 400. |
 | 2026-11-18 | Claude (agent) | `AGENTS.md`, git | Fast-forwarded `main` to the three feature-branch commits (8182030, 6a1bf99, e4139ad) and pushed. Added the §13 rule: commit and push directly to `main`. |

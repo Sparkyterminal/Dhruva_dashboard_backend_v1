@@ -7,17 +7,16 @@ const Event = require('../../Modals/ClientsBookings');
 const { getDataCutoffDate, isYmdBeforeCutoff } = require('../../utils/dataCutoff');
 
 /** Modules allowed to store workbooks. */
+// 'daily-expenses' was removed on 2026-11-18 (replaced by /api/everyday-expenses).
 const ALLOWED_MODULES = [
   'client-leads',
   'budget-report',
-  'daily-expenses',
   'daybook-inflow',
   'daybook-outflow',
 ];
 
 /** Modules whose key is a business date YYYY-MM-DD. */
 const DATE_KEY_MODULES = new Set([
-  'daily-expenses',
   'daybook-inflow',
   'daybook-outflow',
 ]);
@@ -151,7 +150,6 @@ function assertBusinessDateKey(key, res) {
 function defaultTitleForModule(moduleName, key) {
   if (moduleName === 'budget-report') return 'Budget Report';
   if (moduleName === 'client-leads') return 'Leads Tracker Excel';
-  if (moduleName === 'daily-expenses') return `Daily Expenses — ${key}`;
   if (moduleName === 'daybook-inflow') return `Daybook Inflow — ${key}`;
   if (moduleName === 'daybook-outflow') return `Daybook Outflow — ${key}`;
   return '';

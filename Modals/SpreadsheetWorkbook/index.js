@@ -8,7 +8,6 @@ const ObjectId = Schema.Types.ObjectId;
  * Examples:
  * - Leads Tracker:   module=client-leads,    key=default
  * - Budget Report:   module=budget-report,   key=<confirmed event _id>
- * - Daily Expenses:  module=daily-expenses,  key=YYYY-MM-DD
  * - Daybook Inflow:  module=daybook-inflow,  key=YYYY-MM-DD
  * - Daybook Outflow: module=daybook-outflow, key=YYYY-MM-DD
  *

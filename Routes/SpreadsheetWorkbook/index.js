@@ -15,9 +15,6 @@ function isAuthUnlessClientLeads(req, res, next) {
 // GET /spreadsheet-workbooks?module=client-leads&key=default
 // GET /spreadsheet-workbooks?module=budget-report&key=<eventId>
 // GET /spreadsheet-workbooks?module=budget-report&list=1
-// GET /spreadsheet-workbooks?module=daily-expenses&key=YYYY-MM-DD
-// GET /spreadsheet-workbooks?module=daily-expenses&list=1&date=YYYY-MM-DD
-// GET /spreadsheet-workbooks?module=daily-expenses&list=1&from=YYYY-MM-DD&to=YYYY-MM-DD
 // GET /spreadsheet-workbooks?module=daybook-inflow|daybook-outflow&key=YYYY-MM-DD
 // GET /spreadsheet-workbooks?module=daybook-inflow|daybook-outflow&list=1&date|from|to=
 router.get('/', isAuthUnlessClientLeads, spreadsheetWorkbookController.getWorkbook);

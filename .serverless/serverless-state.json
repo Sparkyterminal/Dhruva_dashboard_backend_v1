@@ -230,7 +230,7 @@
                 "S3Bucket": {
                   "Ref": "ServerlessDeploymentBucket"
                 },
-                "S3Key": "serverless/dashboard/dev/1794997674587-2026-11-18T10:27:54.587Z/api.zip"
+                "S3Key": "serverless/dashboard/dev/1794998326639-2026-11-18T10:38:46.639Z/api.zip"
               },
               "Handler": "handler.handler",
               "Runtime": "nodejs18.x",
@@ -257,14 +257,14 @@
               "ApiLogGroup"
             ]
           },
-          "ApiLambdaVersionn4T4K2j3mOVOECZgYaYVE2yNDpA7I4PSoOFsWPXUo": {
+          "ApiLambdaVersionujvoU531HvuGTokzVTK0BINzzMiB15hsvza5coNB4": {
             "Type": "AWS::Lambda::Version",
             "DeletionPolicy": "Retain",
             "Properties": {
               "FunctionName": {
                 "Ref": "ApiLambdaFunction"
               },
-              "CodeSha256": "B4WwGW4yE5mmWGPqzvrkXYdLoX3D/86YrJTDFtNQTP4="
+              "CodeSha256": "whXEIk5YHWiKydTOMGvbEsVCL6XH/mcDk3RO1WNvN7I="
             }
           },
           "HttpApi": {
@@ -478,7 +478,7 @@
           "ApiLambdaFunctionQualifiedArn": {
             "Description": "Current Lambda function version",
             "Value": {
-              "Ref": "ApiLambdaVersionn4T4K2j3mOVOECZgYaYVE2yNDpA7I4PSoOFsWPXUo"
+              "Ref": "ApiLambdaVersionujvoU531HvuGTokzVTK0BINzzMiB15hsvza5coNB4"
             },
             "Export": {
               "Name": "sls-dashboard-dev-ApiLambdaFunctionQualifiedArn"
@@ -640,7 +640,7 @@
         "timeout": 29,
         "runtime": "nodejs18.x",
         "vpc": {},
-        "versionLogicalId": "ApiLambdaVersionn4T4K2j3mOVOECZgYaYVE2yNDpA7I4PSoOFsWPXUo"
+        "versionLogicalId": "ApiLambdaVersionujvoU531HvuGTokzVTK0BINzzMiB15hsvza5coNB4"
       }
     },
     "resources": {
@@ -751,7 +751,7 @@
           "!PAYLOAD_EXAMPLES.md"
         ],
         "artifactsS3KeyDirname": "serverless/dashboard/dev/code-artifacts",
-        "artifactDirectoryName": "serverless/dashboard/dev/1794997674587-2026-11-18T10:27:54.587Z"
+        "artifactDirectoryName": "serverless/dashboard/dev/1794998326639-2026-11-18T10:38:46.639Z"
       }
     },
     "layers": {},
@@ -759,7 +759,7 @@
   },
   "package": {
     "individually": true,
-    "artifactDirectoryName": "serverless/dashboard/dev/1794997674587-2026-11-18T10:27:54.587Z",
+    "artifactDirectoryName": "serverless/dashboard/dev/1794998326639-2026-11-18T10:38:46.639Z",
     "artifact": ""
   }
 }

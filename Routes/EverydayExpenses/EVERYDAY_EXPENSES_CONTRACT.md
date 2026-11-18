@@ -271,11 +271,11 @@ Group · name · calcType · values. All `requiresBill: true` unless noted. `sor
 - [x] Reject/repay per-id results; reviewers cannot settle their own entries.
 - [x] Seed categories (section 6) and default settings; indexes (section 5); audit log.
 - [x] Verify all 20 worked examples (section 7). All pass on a local test database (114 checks in total).
-- [ ] Section 9 (removal of the old data) **only on the owner's go-ahead**.
+- [x] Section 9 (removal of the old data) **only on the owner's go-ahead**. **Done 2026-11-18:** deleted the 6 `spreadsheetworkbooks` `module:"daily-expenses"` rows (keys 2026-07-20 to 2026-11-03). No older Expenses collection existed; all `/expense/i` collections are the new module and were kept. Backup: `~/Desktop/Projects/Dhruva/backups/daily-expenses-legacy-2026-11-18/` (outside git). Removed `daily-expenses` from the spreadsheet-workbooks API (it now returns `400 Unsupported module`).
 
 ---
 
-## 9. Removing the old Daily Expenses (Excel) — NOT run yet
+## 9. Removing the old Daily Expenses (Excel) — DONE 2026-11-18
 
 The two old Excel-style screens are removed from the frontend. Their data must go too. **Run only when the owner says go, in this order; nothing here is run from the frontend repo.**
 
