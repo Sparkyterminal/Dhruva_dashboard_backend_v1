@@ -87,6 +87,9 @@ Common statuses:
 
 ## 3) Daybook
 
+> **Superseded:** the Daybook API changed to V2. Use `Routes/daybook/DAYBOOK_V2_CONTRACT.md`. The section below is legacy.
+
+
 Base URL: `${API_BASE_URL}daybook`
 
 ### GET Daybook
@@ -256,8 +259,8 @@ Create body sample:
 ## Optional split docs (if frontend wants module-wise)
 - `Routes/request/REQUESTS_FRONTEND.md`
 - `Routes/request/GROUP_BY_FRONTEND.md`
-- `Routes/daybook/DAYBOOK_GET_FRONTEND.md`
-- `Routes/daybook/DAYBOOK_OUTFLOW_FRONTEND.md`
+- `Routes/daybook/DAYBOOK_V2_CONTRACT.md` (legacy: `Routes/daybook/legacy/DAYBOOK_GET_FRONTEND.md`)
+- `Routes/daybook/legacy/DAYBOOK_OUTFLOW_FRONTEND.md` (legacy)
 - `Routes/ClientsBookings/EVENTS_LIST_FRONTEND.md`
 - `Routes/ClientsBookings/BALANCE_SHEET_FRONTEND.md`
 - `Routes/MarketingTarget/FRONTEND.md`

@@ -1,3 +1,5 @@
+> **LEGACY, superseded by `Routes/daybook/DAYBOOK_V2_CONTRACT.md`. Do not implement.**
+
 # Daybook GET API — Frontend
 
 > Prefer **`DAYBOOK_CLASSIC_API_CONTRACT.md`** as the full backend schema & API contract for classic Daybook.

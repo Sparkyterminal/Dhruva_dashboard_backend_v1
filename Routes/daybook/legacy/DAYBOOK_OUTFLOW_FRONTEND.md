@@ -1,3 +1,5 @@
+> **LEGACY, superseded by `Routes/daybook/DAYBOOK_V2_CONTRACT.md`. Do not implement.**
+
 # Daybook Outflow Columns — Frontend
 
 Endpoint source: `GET /daybook`

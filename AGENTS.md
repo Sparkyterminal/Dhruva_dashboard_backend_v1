@@ -105,9 +105,10 @@ serverless.yml              AWS deploy config
 Routes/<Module>/index.js    express.Router per module (+ frontend contract .md files)
 Controlers/<Module>/index.js  Request handlers (business logic lives here)
 Modals/<Module>/index.js    Mongoose schemas/models
-Modals/Daybook/{DaybookInflow,DaybookAccountsOpenCloseBalance}/index.js
+Modals/Daybook/{DaybookInflow,DaybookOutflow,DaybookOpeningBalance}/index.js
 utils/
   dataCutoff.js             GLOBAL data-visibility cutoff (see §8). Very important
+  daybook.js                Daybook V2 money rules, account list, validation, balance walk (see §7 /daybook)
   statusCodes.js            STATUS constants (NOTE: NOT_FOUND = 204!)
   messages.js               MESSAGE constants
   validations.js            name/email/phone/password validators (async, return {status})
@@ -311,20 +312,32 @@ budget `summary`), GET/PUT `/excel` (shared Leads Tracker workbook), GET/PUT/DEL
 `convertedByMarketing=true` moves `estimatedBudget` from the "estimated" total to the
 "converted" total, and `convertedAt` is managed automatically.
 
-### `/daybook`
-All routes use JWT, with roles **OWNER, ADMIN, CA, ACCOUNTS, APPROVER, DEPARTMENT** (not
-MARKETING).
-- GET `/?startDate=YYYY-MM-DD&endDate=YYYY-MM-DD` (or `date=`), `limit` (≤ 1000),
-  `includeEventAdvances` (default true) → `{inflow, outflow, profitAndLoss, accounts.openCloseBalances}`.
-  - Inflow = manual `DaybookInflow` rows (string `receivedDate` YYYY-MM-DD) **plus** booking
-    advances with `receivedAmount > 0` whose `receivedDate` falls in the **IST** day window.
-    Advance row ids look like `eventadvance:<eventId>:<etIdx>:<advIdx>`.
-  - Outflow = Requests with `amount_paid > 0` and `updatedAt` in the **UTC** day window.
-- POST `/inflows`, PUT/DELETE `/inflows/:id`. `receivedIn` is CASH or ACCOUNT. ACCOUNT requires
-  `accountName` ∈ **HDFC | ICIC | DHRUVA | MONICA**, which is hard-coded in two places in the
-  controller.
-- POST `/accounts/open-close-balances`, PUT/DELETE `/:id`. `balanceDate` is unique (YYYY-MM-DD
-  string, 409 on duplicate). Account totals are computed from `accountBalances[]`.
+### `/daybook` (Daybook V2: a pure manual ledger)
+**Full contract: `Routes/daybook/DAYBOOK_V2_CONTRACT.md`**, including the backend
+implementation notes at its end. All routes use JWT, with roles **OWNER, ADMIN, CA, ACCOUNTS,
+APPROVER, DEPARTMENT** (not MARKETING).
+The daybook is **not** linked to requests or booking advances any more. Every row is typed in
+by Accounts.
+- GET `/?startDate&endDate` (YYYY-MM-DD, inclusive; `date=` is shorthand), `limit` (default
+  200, max 1000) → `{inflow{count,totals{gross,gst,tds,net},data}, outflow{count,totals{amountPaid,tds,gst,actual},data}, surplusDeficit{value,type SURPLUS|DEFICIT}, openingBalanceSet, balances{days[]}}`.
+  Totals always cover all matching rows. The range is capped at 3660 days (400).
+- POST `/inflows`, PUT/DELETE `/inflows/:id` (PUT is a full replace).
+  `netAmountReceived = round2(amountReceived − gst − tds)`. CASH must have gst = tds = 0.
+- POST `/outflows`, PUT/DELETE `/outflows/:id`. `vendorId` is required, and a snapshot of
+  `vendorName` and `vendorCode` is stored.
+  `actualAmountPaid = round2(amountPaid − tds + gst)`.
+- GET/PUT `/opening-balance`: a single document `{asOfDate, balances[{source, amount}]}`.
+  PUT needs every source exactly once (negative amounts allowed), and returns 409 if any
+  entry is dated before `asOfDate`.
+- **Balances are never stored.** `balances.days` is computed on read by walking from `asOfDate`
+  (`utils/daybook.js` `computeBalanceDays`, which matches the contract's reference algorithm).
+  There is one row per calendar day, carried forward, and closing balances can be negative.
+- Sources are `Cash` + the fixed account list in `utils/daybook.js` `ACCOUNT_NAMES`, which must
+  match the frontend `daybookConfig.js`. If the list changes, change both, and the
+  opening-balance document must then be re-saved with every source.
+- **Never trust client net/actual amounts.** All money math goes through `utils/daybook.js`.
+- Dates are plain `YYYY-MM-DD` strings (no time zones). Entries must be dated on or after
+  `asOfDate` once an opening balance exists.
 
 ### `/spreadsheet-workbooks` (Univer Sheets snapshots, collection `spreadsheetworkbooks`)
 JWT plus roles (all 7), **except `module=client-leads`, which is public**.
@@ -364,7 +377,7 @@ error falls back to the default. **Older data is hidden** by raising the `$gte` 
 | Client leads list, leads estimated-budget card | `startDate` |
 | Personal calendar | `startAt` |
 | Bills list | `startDate ?? emiDate` |
-| Daybook | the range is clamped to the cutoff. An end date before the cutoff returns empty totals |
+| Daybook V2 | **exempt on purpose.** The ledger starts at the opening balance's `asOfDate`, and clamping would make totals disagree with balances |
 | Spreadsheet date-key modules | keys and list ranges before the cutoff return empty |
 | Login response | `dataCutoffDate` |
 
@@ -395,8 +408,12 @@ for simple date fields.
 | PersonalCalendar | `PersonalCalendar` (coll `personal_calendars`) | `userId, title, category, startAt, endAt, description` |
 | Settings | `appsetting` | `key` unique, `value` Mixed |
 | SpreadsheetWorkbook | `spreadsheetworkbook` | unique (module, key). `workbookData` Mixed (opaque), `meta`, `version`, `createdBy`, `updatedBy` |
-| Daybook/DaybookInflow | `daybookinflows` | `name, receivedDate (STRING YYYY-MM-DD), receivedIn, accountName, amountReceived, receivedBy, event_reference, note, createdBy (string)` |
-| Daybook/DaybookAccountsOpenCloseBalance | `daybookaccountopenclosebalances` | `balanceDate` unique string, cash and account opening/closing, `accountBalances[]` |
+| Daybook/DaybookInflow | `daybookinflows` | V2: `clientName, eventDate, eventReference→Event, receivedDate (STRING YYYY-MM-DD, indexed), receivedIn CASH/ACCOUNT, accountName, amountReceived, gstAmount, tdsAmount, netAmountReceived (server-computed), note, createdBy (string)`. Legacy rows (`name, receivedBy, event_reference`) remain until the owner-approved cleanup |
+| Daybook/DaybookOutflow | `daybookoutflows` | `vendorId→vendor, vendorName, vendorCode (snapshot), paidDate (STRING, indexed), paidFrom CASH/ACCOUNT, accountName, amountPaid, tdsAmount, gstAmount, actualAmountPaid (server-computed), note, createdBy` |
+| Daybook/DaybookOpeningBalance | `daybookopeningbalances` | single doc (unique `singleton: "default"`): `asOfDate, balances[{source, amount}], updatedBy` |
+
+The old `daybookaccountopenclosebalances` collection has no model any more. It is dropped by
+the contract's §5 cleanup.
 
 `ref` strings must match the **model name** exactly, including case (`'user'`, `'Event'`,
 `'EventName'`, `'EventType'`, `'vendor'`, `'department'`, `'coordinator'`, `'venue'`,
@@ -415,7 +432,7 @@ for simple date fields.
 
 ## 11. Frontend contract docs
 `Routes/API_DOCS_INDEX.md` is the index. Per-module docs are `Routes/request/*.md`,
-`Routes/daybook/*.md` (`DAYBOOK_CLASSIC_API_CONTRACT.md` is canonical),
+`Routes/daybook/DAYBOOK_V2_CONTRACT.md` (canonical; `Routes/daybook/legacy/` is superseded),
 `Routes/ClientsBookings/*.md`, `Routes/ClientLead/FRONTEND_ESTIMATED_BUDGET.md`,
 `Routes/MarketingTarget/FRONTEND.md` and `Routes/PersonalCalendar/FRONTEND.md`. There are
 also the consolidated files `Routes/FRONTEND_ALL_APIS_FINAL.md` and
@@ -451,6 +468,11 @@ Fix these only when asked. Don't "fix" them silently as part of an unrelated tas
     set a long random `JWT_SECRET` in `.env` and redeploy. This logs out every user.
 15. Line 2 of `.env` has a value with an unquoted space or format problem, so `source .env`
     prints `command not found`. Quote the value.
+16. **Daybook V2 legacy data cleanup is pending** (contract §5): old-shape `daybookinflows` rows,
+    the `daybookaccountopenclosebalances` collection, and `spreadsheetworkbooks` `daybook-*`
+    rows. Run it **only on the owner's say-so**, and **before** V2 inflows are entered, because
+    `deleteMany({})` would also delete the new rows. Until it runs, legacy rows dated before
+    the chosen `asOfDate` make `PUT /daybook/opening-balance` return 409.
 
 ## 13. Maintenance protocol (MANDATORY)
 
@@ -476,7 +498,7 @@ Fix these only when asked. Don't "fix" them silently as part of an unrelated tas
    author or agent, the files touched, and what changed and why. One row per logical change.
    Also update the "Last verified" line below.
 
-_Last verified against code: **2026-11-17** (131 sub-routes mounted, smoke check OK)._
+_Last verified against code: **2026-11-18** (smoke check OK; Daybook V2 tested against a local throwaway MongoDB)._
 
 ## 14. Change log
 
@@ -484,5 +506,6 @@ Newest first. Use the format: `| date | who | files | summary |`
 
 | Date | Who | Files | Summary |
 |---|---|---|---|
+| 2026-11-18 | Claude (agent) | `Controlers/daybook`, `Routes/daybook`, `utils/daybook.js` (new), `Modals/Daybook/DaybookInflow` (reshaped), `Modals/Daybook/DaybookOutflow` (new), `Modals/Daybook/DaybookOpeningBalance` (new), `Modals/Daybook/DaybookAccountsOpenCloseBalance` (deleted), `Routes/daybook/DAYBOOK_V2_CONTRACT.md` (new), `Routes/daybook/legacy/*` (moved + banner), `Routes/API_DOCS_INDEX.md`, `Routes/FRONTEND_*.md`, `AGENTS.md` | Implemented the Daybook V2 contract: a manual inflow/outflow ledger with server-computed net/actual amounts, a single opening balance, and day-wise balances computed on read. Removed the merging of requests and booking advances, `includeEventAdvances`, and the open-close-balance routes. The cutoff is not applied to the daybook. Tested on a local MongoDB with 366 checks (300 randomized cases match the contract reference algorithm, plus HTTP validation, auth, 409, carry-forward, edit, delete and legacy rows) — all pass. **Deployed 2026-11-18** to `dashboard-dev` (same URL; DB_URL/JWT_SECRET hash-checked unchanged). Live check: health 200, `/daybook` without a token 401, opening-balance GET 200 `{asOfDate:null}`, the V2 response shape is returned, and the old open-close route returns 404. **Legacy data cleanup (contract §5) not run.** |
 | 2026-11-17 | Claude (agent) | deploy, `AGENTS.md`, `.serverless/*` | Deployed the current working tree to stage `dev` (stack `dashboard-dev`, ap-south-1). Base URL `https://gbgmfpqxbi.execute-api.ap-south-1.amazonaws.com/api/`. DB_URL and JWT_SECRET are unchanged from the previous deploy (hash-checked). Verified `/api/health` returns 200, `/api/events/minimal` returns 200 with 203 events (DB connected), and `/api/settings/data-cutoff` without a token returns 401. Added deploy docs and §12 items 14–15. |
 | 2026-11-17 | Claude (agent) | `AGENTS.md`, `CLAUDE.md` | Created AGENTS.md from a full read of routes, controllers, models, utils, auth and deploy config. Added CLAUDE.md, which imports this file so Claude Code loads it automatically. At this point the working tree had uncommitted changes adding MarketingTarget, PersonalCalendar, Settings (data cutoff), SpreadsheetWorkbook and RequestGroupBy, plus `utils/dataCutoff.js`. No code changes. |

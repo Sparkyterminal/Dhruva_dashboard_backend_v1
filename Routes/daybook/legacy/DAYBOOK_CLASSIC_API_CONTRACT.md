@@ -1,3 +1,5 @@
+> **LEGACY, superseded by `Routes/daybook/DAYBOOK_V2_CONTRACT.md`. Do not implement.**
+
 # Daybook (Classic Tables) — Backend Schema & API Contract
 
 Share this with the backend team. The frontend has been restored to the classic Ant Design Daybook (inflow / outflow / accounts open-close). It does **not** use spreadsheet workbooks (`daybook-inflow` / `daybook-outflow` Excel modules).

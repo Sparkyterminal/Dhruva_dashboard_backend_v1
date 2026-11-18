@@ -7,9 +7,8 @@ Use this file as the single shareable index for frontend implementation.
 - `Routes/request/GROUP_BY_FRONTEND.md`
 
 ## Daybook
-- `Routes/daybook/DAYBOOK_CLASSIC_API_CONTRACT.md` — **canonical** classic Daybook schema & API contract (inflow / outflow / accounts; no spreadsheet workbooks)
-- `Routes/daybook/DAYBOOK_GET_FRONTEND.md`
-- `Routes/daybook/DAYBOOK_OUTFLOW_FRONTEND.md`
+- `Routes/daybook/DAYBOOK_V2_CONTRACT.md`: **canonical** Daybook V2 contract (manual inflow/outflow ledger, computed balances, opening balance)
+- `Routes/daybook/legacy/`: old daybook docs, **superseded, do not implement**
 
 ## Events
 - `Routes/ClientsBookings/EVENTS_LIST_FRONTEND.md`
