@@ -56,11 +56,15 @@ npm run sls:deploy:prod   # deploy stage "prod"
 
 **How to deploy.** Serverless v3 here doesn't read `.env` on its own (`useDotenv` isn't set),
 so export the variables first. Otherwise the hard-coded fallbacks in `serverless.yml` are used.
-Pass AWS credentials through the environment or `~/.aws`, and never write them into the repo:
+AWS credentials come from the **`dhruva-deploy` profile** in `~/.aws/credentials`
+(`provider.profile` in `serverless.yml`), which is the account that owns `dashboard-dev`. The
+machine's `[default]` profile is a **different** key and would deploy to a different stack and
+URL. Never write keys into the repo. Make sure no `AWS_ACCESS_KEY_ID` env var is set, because
+it overrides the profile.
 
 ```bash
 set -a; . ./.env; set +a
-AWS_ACCESS_KEY_ID=... AWS_SECRET_ACCESS_KEY=... npx serverless deploy --stage dev --region ap-south-1
+npx serverless deploy --stage dev --region ap-south-1
 curl https://gbgmfpqxbi.execute-api.ap-south-1.amazonaws.com/api/health   # expect {"status":"ok"}
 ```
 
@@ -468,11 +472,8 @@ Fix these only when asked. Don't "fix" them silently as part of an unrelated tas
     set a long random `JWT_SECRET` in `.env` and redeploy. This logs out every user.
 15. Line 2 of `.env` has a value with an unquoted space or format problem, so `source .env`
     prints `command not found`. Quote the value.
-16. **Daybook V2 legacy data cleanup is pending** (contract §5): old-shape `daybookinflows` rows,
-    the `daybookaccountopenclosebalances` collection, and `spreadsheetworkbooks` `daybook-*`
-    rows. Run it **only on the owner's say-so**, and **before** V2 inflows are entered, because
-    `deleteMany({})` would also delete the new rows. Until it runs, legacy rows dated before
-    the chosen `asOfDate` make `PUT /daybook/opening-balance` return 409.
+16. ~~Daybook V2 legacy data cleanup~~ **Done 2026-11-18** (see the change log). The backup is outside git at
+    `~/Desktop/Projects/Dhruva/backups/daybook-legacy-2026-11-18/`.
 
 ## 13. Maintenance protocol (MANDATORY)
 
@@ -506,6 +507,7 @@ Newest first. Use the format: `| date | who | files | summary |`
 
 | Date | Who | Files | Summary |
 |---|---|---|---|
+| 2026-11-18 | Claude (agent) | `serverless.yml`, `~/.aws/credentials` (local, not in git), live DB, `Routes/daybook/DAYBOOK_V2_CONTRACT.md`, `AGENTS.md` | Added the AWS profile `dhruva-deploy` (the key for the `dashboard-dev` account) and set `provider.profile: dhruva-deploy`. The `[default]` profile is unchanged, and a backup of the credentials file is at `~/.aws/credentials.bak-2026-11-18`. Verified with `serverless info` (same stack and URL). **Ran the Daybook §5 cleanup on the owner's go-ahead:** backed up with mongoexport, then deleted 3 legacy `daybookinflows` (filtered on `clientName` missing), dropped `daybookaccountopenclosebalances` (2 rows) and deleted 5 `spreadsheetworkbooks` `daybook-*` rows. Verified afterwards that events, vendors, requests and the other workbook modules were untouched. |
 | 2026-11-18 | Claude (agent) | `Controlers/daybook`, `Routes/daybook`, `utils/daybook.js` (new), `Modals/Daybook/DaybookInflow` (reshaped), `Modals/Daybook/DaybookOutflow` (new), `Modals/Daybook/DaybookOpeningBalance` (new), `Modals/Daybook/DaybookAccountsOpenCloseBalance` (deleted), `Routes/daybook/DAYBOOK_V2_CONTRACT.md` (new), `Routes/daybook/legacy/*` (moved + banner), `Routes/API_DOCS_INDEX.md`, `Routes/FRONTEND_*.md`, `AGENTS.md` | Implemented the Daybook V2 contract: a manual inflow/outflow ledger with server-computed net/actual amounts, a single opening balance, and day-wise balances computed on read. Removed the merging of requests and booking advances, `includeEventAdvances`, and the open-close-balance routes. The cutoff is not applied to the daybook. Tested on a local MongoDB with 366 checks (300 randomized cases match the contract reference algorithm, plus HTTP validation, auth, 409, carry-forward, edit, delete and legacy rows) — all pass. **Deployed 2026-11-18** to `dashboard-dev` (same URL; DB_URL/JWT_SECRET hash-checked unchanged). Live check: health 200, `/daybook` without a token 401, opening-balance GET 200 `{asOfDate:null}`, the V2 response shape is returned, and the old open-close route returns 404. **Legacy data cleanup (contract §5) not run.** |
 | 2026-11-17 | Claude (agent) | deploy, `AGENTS.md`, `.serverless/*` | Deployed the current working tree to stage `dev` (stack `dashboard-dev`, ap-south-1). Base URL `https://gbgmfpqxbi.execute-api.ap-south-1.amazonaws.com/api/`. DB_URL and JWT_SECRET are unchanged from the previous deploy (hash-checked). Verified `/api/health` returns 200, `/api/events/minimal` returns 200 with 203 events (DB connected), and `/api/settings/data-cutoff` without a token returns 401. Added deploy docs and §12 items 14–15. |
 | 2026-11-17 | Claude (agent) | `AGENTS.md`, `CLAUDE.md` | Created AGENTS.md from a full read of routes, controllers, models, utils, auth and deploy config. Added CLAUDE.md, which imports this file so Claude Code loads it automatically. At this point the working tree had uncommitted changes adding MarketingTarget, PersonalCalendar, Settings (data cutoff), SpreadsheetWorkbook and RequestGroupBy, plus `utils/dataCutoff.js`. No code changes. |

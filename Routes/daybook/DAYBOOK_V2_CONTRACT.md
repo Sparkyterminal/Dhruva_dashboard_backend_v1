@@ -295,7 +295,7 @@ DaybookOpeningBalance {                // collection: daybookopeningbalances, ma
 
 ---
 
-## 5. Cleaning up the old Daybook data (owner asked for this) — NOT run yet
+## 5. Cleaning up the old Daybook data (owner asked for this) — DONE 2026-11-18
 
 Old data cannot be reused: the inflow shape changed (`name` / `receivedBy` instead of `clientName` / `eventDate` / GST / TDS) and the old open/close rows are obsolete. Run **only when the owner says go**, in this order. This must be run by someone with the connection string.
 
@@ -327,7 +327,7 @@ Old data cannot be reused: the inflow shape changed (`name` / `receivedBy` inste
 - [x] Implement section 1 rules in one shared function used by create, update and read (`utils/daybook.js`).
 - [x] Remove the `open-close-balances` routes.
 - [x] Implement `balances.days` with the reference algorithm. Verified against the reference implementation on 300 randomized cases, and the contract example (see notes). The frontend file `DAYBOOK_V2_WORKED_EXAMPLE.md` is not in this repo, so it was not checked.
-- [ ] Run section 5 only on the owner's say-so.
+- [x] Run section 5 only on the owner's say-so. **Done 2026-11-18:** removed 3 legacy inflows, dropped `daybookaccountopenclosebalances` (2 rows) and deleted 5 `daybook-*` spreadsheet workbooks. Only legacy-shaped inflows (`clientName` missing) were deleted, not `deleteMany({})`. Backup: `~/Desktop/Projects/Dhruva/backups/daybook-legacy-2026-11-18/` (outside git).
 
 ---
 

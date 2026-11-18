@@ -7,6 +7,9 @@ provider:
   runtime: nodejs18.x
   stage: ${opt:stage, 'dev'}
   region: ${opt:region, 'ap-south-1'}
+  # AWS credentials profile in ~/.aws/credentials (the account that owns stack dashboard-dev).
+  # Override with: serverless deploy --aws-profile <name>
+  profile: dhruva-deploy
   memorySize: 1024
   # API Gateway HTTP API max integration timeout is 30s; use 29 to avoid 504
   timeout: 29
