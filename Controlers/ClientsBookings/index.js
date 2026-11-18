@@ -7,8 +7,16 @@ const STATUS = require("../../utils/statusCodes");
 const MESSAGE = require("../../utils/messages");
 const mongoose = require("mongoose");
 const BudgetReport = require("../../Modals/BudgetReport");
-const { populateEventAndVendorsPipeline } = require("../BudgetReport");
+const SpreadsheetWorkbook = require("../../Modals/SpreadsheetWorkbook");
 const Request = require("../../Modals/Request");
+const ClientLead = require("../../Modals/ClientLead");
+const {
+  getDataCutoffDate,
+  applyEventTypesStartDateCutoff,
+  applyEventTypesElemFilter,
+  applyDateFieldCutoff,
+  mergeCutoffIntoStartDate,
+} = require("../../utils/dataCutoff");
 
 function escapeRegex(str) {
   return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -25,61 +33,71 @@ function toObjectIdForMatch(id) {
   return id;
 }
 
+/** Match ObjectId or string-stored ids (malformed imports). */
+function idQueryValues(id) {
+  if (id == null || id === '') return undefined;
+  const s = String(id);
+  const vals = [s];
+  if (mongoose.Types.ObjectId.isValid(s)) vals.push(new mongoose.Types.ObjectId(s));
+  return vals;
+}
+
+async function findEventDocById(eventId) {
+  if (!eventId) return null;
+  const byObjectId = await Event.findById(eventId);
+  if (byObjectId) return byObjectId;
+  const raw = await Event.collection.findOne({ _id: String(eventId) });
+  return raw ? Event.hydrate(raw) : null;
+}
+
 /**
- * Latest populated budget report per event + count of reports per event.
- * Populated shape matches GET /api/budget-report/:id (populateEventAndVendorsPipeline).
+ * Excel budget report meta per event (spreadsheet_workbooks, module=budget-report).
+ * Never includes workbookData — list payloads must stay light.
  */
+function formatEventBudgetReportMeta(wb) {
+  if (!wb) return null;
+  return {
+    _id: wb._id,
+    module: wb.module,
+    key: wb.key,
+    title: wb.title || '',
+    version: wb.version,
+    updatedAt: wb.updatedAt,
+    meta: wb.meta && typeof wb.meta === 'object' ? wb.meta : {},
+  };
+}
+
 async function fetchBudgetReportMapsForEventIds(eventIds) {
   const byEventId = new Map();
   const counts = new Map();
 
-  const oidList = [];
+  const keys = [];
   const seen = new Set();
   for (const id of eventIds || []) {
     if (id == null) continue;
-    const oid = toObjectIdForMatch(id);
-    if (!(oid instanceof mongoose.Types.ObjectId)) continue;
-    const key = String(oid);
+    const key = String(id);
     if (seen.has(key)) continue;
     seen.add(key);
-    oidList.push(oid);
+    keys.push(key);
   }
 
-  if (!oidList.length) {
+  if (!keys.length) {
     return { byEventId, counts };
   }
 
   try {
-    const [countRows, latestRows] = await Promise.all([
-      BudgetReport.aggregate([
-        { $match: { eventId: { $in: oidList } } },
-        { $group: { _id: '$eventId', count: { $sum: 1 } } },
-      ]).option({ maxTimeMS: 20000 }),
-      BudgetReport.aggregate([
-        { $match: { eventId: { $in: oidList } } },
-        { $sort: { createdAt: -1 } },
-        { $group: { _id: '$eventId', latestId: { $first: '$_id' } } },
-      ]).option({ maxTimeMS: 20000 }),
-    ]);
+    const workbooks = await SpreadsheetWorkbook.find({
+      module: 'budget-report',
+      key: { $in: keys },
+    })
+      .select('-workbookData')
+      .lean()
+      .maxTimeMS(20000);
 
-    for (const r of countRows) {
-      if (r._id) counts.set(String(r._id), r.count);
-    }
-
-    const latestIds = latestRows.map((r) => r.latestId).filter(Boolean);
-    if (!latestIds.length) {
-      return { byEventId, counts };
-    }
-
-    const populated = await BudgetReport.aggregate([
-      { $match: { _id: { $in: latestIds } } },
-      ...populateEventAndVendorsPipeline(),
-    ]).option({ maxTimeMS: 25000 });
-
-    for (const doc of populated) {
-      const ev = doc.eventId;
-      const key = ev && ev._id != null ? String(ev._id) : null;
-      if (key) byEventId.set(key, doc);
+    for (const wb of workbooks || []) {
+      const k = String(wb.key);
+      byEventId.set(k, formatEventBudgetReportMeta(wb));
+      counts.set(k, 1);
     }
   } catch (err) {
     console.error('fetchBudgetReportMapsForEventIds:', err);
@@ -113,27 +131,109 @@ function mapStatusToEventConfirmation(raw) {
   return map[s] || null;
 }
 
-/** Sums expected/received across all eventTypes[].advances[] */
-function computeAdvanceTotals(eventDoc) {
-  let totalExpectedAdvance = 0;
-  let totalReceivedAmount = 0;
-  let advanceEntriesCount = 0;
-  const types = eventDoc.eventTypes || [];
-  for (const et of types) {
-    const advs = et.advances || [];
-    for (const a of advs) {
-      advanceEntriesCount += 1;
-      const exp = Number(a.expectedAmount);
-      totalExpectedAdvance += Number.isFinite(exp) ? exp : 0;
-      const rec = Number(a.receivedAmount);
-      totalReceivedAmount += Number.isFinite(rec) ? rec : 0;
+/** Event name label whether populated object or plain string. */
+function getEventNameLabel(eventDoc) {
+  const en = eventDoc?.eventName;
+  if (typeof en === 'string') return en;
+  if (en && typeof en === 'object' && en.name != null) return String(en.name);
+  return null;
+}
+
+/** Wedding + advancePaymentType === "complete" (package counted once). */
+function isCompletePaymentWedding(eventDoc) {
+  return (
+    getEventNameLabel(eventDoc) === 'Wedding' &&
+    eventDoc?.advancePaymentType === 'complete'
+  );
+}
+
+function advanceDedupeKey(adv, idx) {
+  if (adv?.advanceNumber != null && adv.advanceNumber !== '') {
+    return `n:${adv.advanceNumber}`;
+  }
+  return `i:${idx}`;
+}
+
+/**
+ * Sum an advance money field across event types.
+ * Complete wedding: dedupe by advanceNumber (fallback index), take max per key, then sum.
+ * Else: flat sum of every nested advance.
+ */
+function sumAdvanceField(eventDoc, fieldName, { dedupe } = {}) {
+  if (dedupe) {
+    const byKey = new Map();
+    for (const et of eventDoc?.eventTypes || []) {
+      (et?.advances || []).forEach((adv, idx) => {
+        const key = advanceDedupeKey(adv, idx);
+        const amt = Number(adv?.[fieldName]);
+        const value = Number.isFinite(amt) ? amt : 0;
+        const prev = byKey.get(key) ?? 0;
+        if (value > prev) byKey.set(key, value);
+      });
+    }
+    let total = 0;
+    for (const v of byKey.values()) total += v;
+    return { total: roundRupee(total), count: byKey.size };
+  }
+
+  let total = 0;
+  let count = 0;
+  for (const et of eventDoc?.eventTypes || []) {
+    for (const adv of et?.advances || []) {
+      count += 1;
+      const n = Number(adv?.[fieldName]);
+      total += Number.isFinite(n) ? n : 0;
     }
   }
+  return { total: roundRupee(total), count };
+}
+
+/**
+ * Dashboard agreed amount (_agreed):
+ * - Wedding + advancePaymentType === "complete" → eventTypes[0].agreedAmount only
+ * - Otherwise → sum of all eventTypes[].agreedAmount
+ */
+function getBookingAgreedAmount(eventDoc) {
+  if (isCompletePaymentWedding(eventDoc)) {
+    return roundRupee(eventDoc?.eventTypes?.[0]?.agreedAmount);
+  }
+
+  let total = 0;
+  for (const et of eventDoc?.eventTypes || []) {
+    const n = Number(et?.agreedAmount);
+    total += Number.isFinite(n) ? n : 0;
+  }
+  return roundRupee(total);
+}
+
+/** Received amount — complete wedding dedupes by advanceNumber (max per key). */
+function getBookingReceivedAmount(eventDoc) {
+  return sumAdvanceField(eventDoc, 'receivedAmount', {
+    dedupe: isCompletePaymentWedding(eventDoc),
+  }).total;
+}
+
+/** Expected advance schedule total — same complete-wedding dedupe as received. */
+function getBookingExpectedAdvance(eventDoc) {
+  return sumAdvanceField(eventDoc, 'expectedAmount', {
+    dedupe: isCompletePaymentWedding(eventDoc),
+  }).total;
+}
+
+function computeAdvanceTotals(eventDoc) {
+  const dedupe = isCompletePaymentWedding(eventDoc);
+  const receivedInfo = sumAdvanceField(eventDoc, 'receivedAmount', { dedupe });
+  const expectedInfo = sumAdvanceField(eventDoc, 'expectedAmount', { dedupe });
+  const agreedAmount = getBookingAgreedAmount(eventDoc);
+  const received = receivedInfo.total;
+  const expected = expectedInfo.total;
   return {
-    totalExpectedAdvance,
-    totalReceivedAmount,
-    pendingAdvanceAmount: totalExpectedAdvance - totalReceivedAmount,
-    advanceEntriesCount,
+    totalExpectedAdvance: expected,
+    totalReceivedAmount: received,
+    pendingAdvanceAmount: Math.max(0, expected - received),
+    advanceEntriesCount: expectedInfo.count,
+    agreedAmount,
+    pendingAmount: Math.max(0, agreedAmount - received),
   };
 }
 
@@ -168,59 +268,56 @@ function roundRupee(n) {
   return Math.round(x);
 }
 
-/** All advances on all events matching `match` (same filters as list API) */
+const EVENT_MONEY_SELECT =
+  'eventConfirmation eventName advancePaymentType eventTypes.agreedAmount eventTypes.totalPayable eventTypes.advances';
+
+async function loadEventsForMoneyRollup(match) {
+  return Event.find(match)
+    .select(EVENT_MONEY_SELECT)
+    .populate('eventName', 'name')
+    .lean()
+    .maxTimeMS(AGG_MAX_MS);
+}
+
+/** All advances on all events matching `match` (complete-wedding aware). */
 async function aggregateEventsAdvanceSummary(match) {
-  const rows = await Event.aggregate([
-    { $match: match },
-    { $unwind: { path: '$eventTypes', preserveNullAndEmptyArrays: false } },
-    { $unwind: { path: '$eventTypes.advances', preserveNullAndEmptyArrays: false } },
-    {
-      $group: {
-        _id: null,
-        totalExpectedAdvance: {
-          $sum: {
-            $round: [
-              {
-                $convert: {
-                  input: '$eventTypes.advances.expectedAmount',
-                  to: 'double',
-                  onError: 0,
-                  onNull: 0,
-                },
-              },
-              0,
-            ],
-          },
-        },
-        totalReceivedAmount: {
-          $sum: {
-            $round: [
-              {
-                $convert: {
-                  input: '$eventTypes.advances.receivedAmount',
-                  to: 'double',
-                  onError: 0,
-                  onNull: 0,
-                },
-              },
-              0,
-            ],
-          },
-        },
-        totalAdvanceEntries: { $sum: 1 },
-      },
-    },
-  ])
-    .option({ maxTimeMS: AGG_MAX_MS })
-    .exec();
-  const r = rows[0] || {};
-  const exp = roundRupee(r.totalExpectedAdvance);
-  const rec = roundRupee(r.totalReceivedAmount);
+  const docs = await loadEventsForMoneyRollup(match);
+  let totalExpectedAdvance = 0;
+  let totalReceivedAmount = 0;
+  let totalAdvanceEntries = 0;
+  for (const doc of docs) {
+    const t = computeAdvanceTotals(doc);
+    totalExpectedAdvance += t.totalExpectedAdvance;
+    totalReceivedAmount += t.totalReceivedAmount;
+    totalAdvanceEntries += t.advanceEntriesCount;
+  }
+  totalExpectedAdvance = roundRupee(totalExpectedAdvance);
+  totalReceivedAmount = roundRupee(totalReceivedAmount);
   return {
-    totalExpectedAdvance: exp,
-    totalReceivedAmount: rec,
-    totalPendingAdvance: roundRupee(exp - rec),
-    totalAdvanceEntries: Number(r.totalAdvanceEntries) || 0,
+    totalExpectedAdvance,
+    totalReceivedAmount,
+    totalPendingAdvance: Math.max(0, totalExpectedAdvance - totalReceivedAmount),
+    totalAdvanceEntries,
+  };
+}
+
+/**
+ * Filter-wide agreed + received for dashboard (complete-wedding received dedupe).
+ */
+async function aggregateEventsAgreedSummary(match) {
+  const docs = await loadEventsForMoneyRollup(match);
+  let totalAgreedAmount = 0;
+  let totalReceivedAmount = 0;
+  for (const doc of docs) {
+    totalAgreedAmount += getBookingAgreedAmount(doc);
+    totalReceivedAmount += getBookingReceivedAmount(doc);
+  }
+  totalAgreedAmount = roundRupee(totalAgreedAmount);
+  totalReceivedAmount = roundRupee(totalReceivedAmount);
+  return {
+    totalAgreedAmount,
+    totalReceivedAmount,
+    totalPendingAmount: Math.max(0, totalAgreedAmount - totalReceivedAmount),
   };
 }
 
@@ -282,115 +379,143 @@ async function aggregateEventsTotalPayableSummary(match) {
 }
 
 /**
- * Summary for ALL / CONFIRMED / INPROGRESS in one pass.
- * pending = totalPayableSum - totalReceivedAmount
+ * totalsByStatus for GET /api/events (same filters as list, but always on baseQuery — ignores status filter).
+ * Shapes match frontend dashboard: all / confirmed / pending (InProgress) / cancelled.
+ * Received/balance use complete-wedding advance dedupe.
  */
 async function aggregateEventsPayableReceivedBookingsByStatus(match) {
-  const num = (fieldPath) => ({
-    $convert: { input: fieldPath, to: 'double', onError: 0, onNull: 0 },
+  const docs = await loadEventsForMoneyRollup(match);
+
+  const empty = () => ({
+    totalBookings: 0,
+    totalPayableSum: 0,
+    totalAgreedAmount: 0,
+    totalReceivedAmount: 0,
+    totalBalanceAmount: 0,
+    bookingsWithAnyReceiptCount: 0,
+    bookingsWithOutstandingBalanceCount: 0,
   });
 
-  const rows = await Event.aggregate([
-    { $match: match },
+  const overall = empty();
+  const confirmedRow = empty();
+  const inProgRow = empty();
+  const cancelledRow = empty();
+
+  const add = (bucket, payable, agreed, received, agreedBalance) => {
+    bucket.totalBookings += 1;
+    bucket.totalPayableSum += payable;
+    bucket.totalAgreedAmount += agreed;
+    bucket.totalReceivedAmount += received;
+    bucket.totalBalanceAmount += agreedBalance;
+    if (received > 0) bucket.bookingsWithAnyReceiptCount += 1;
+    if (agreedBalance > 0) bucket.bookingsWithOutstandingBalanceCount += 1;
+  };
+
+  for (const doc of docs) {
+    const payable = roundRupee(computeBookingAmountFromEventTypes(doc));
+    const advances = computeAdvanceTotals(doc);
+    const agreed = advances.agreedAmount;
+    const received = advances.totalReceivedAmount;
+    const agreedBalance = Math.max(0, agreed - received);
+
+    add(overall, payable, agreed, received, agreedBalance);
+    if (doc.eventConfirmation === 'Confirmed Event') {
+      add(confirmedRow, payable, agreed, received, agreedBalance);
+    } else if (doc.eventConfirmation === 'InProgress') {
+      add(inProgRow, payable, agreed, received, agreedBalance);
+    } else if (doc.eventConfirmation === 'Cancelled') {
+      add(cancelledRow, payable, agreed, received, agreedBalance);
+    }
+  }
+
+  const allBookings = overall.totalBookings;
+  const confBookings = confirmedRow.totalBookings;
+  const pendBookings = inProgRow.totalBookings;
+  const confExpected = roundRupee(confirmedRow.totalAgreedAmount);
+  const pendExpected = roundRupee(inProgRow.totalAgreedAmount);
+  const cancExpected = roundRupee(cancelledRow.totalAgreedAmount);
+  // Dashboard "total expected" = agreed(confirmed) + agreed(pending) − agreed(cancelled)
+  const allExpected = roundRupee(confExpected + pendExpected - cancExpected);
+
+  const pendingPayload = {
+    totalBookingsNumber: pendBookings,
+    totalExpectedAmount: pendExpected,
+    totalAgreedAmount: roundRupee(inProgRow.totalAgreedAmount),
+    totalReceivedAmount: roundRupee(inProgRow.totalReceivedAmount),
+    totalBalanceAmount: roundRupee(inProgRow.totalBalanceAmount),
+  };
+
+  return {
+    all: {
+      totalExpectedAmount: allExpected,
+      totalBookingsNumber: allBookings,
+      // Confirmed + InProgress only — cancelled stays in totalsByStatus.cancelled, not this field.
+      totalAgreedAmount: roundRupee(
+        confirmedRow.totalAgreedAmount + inProgRow.totalAgreedAmount
+      ),
+      totalReceivedAmount: roundRupee(overall.totalReceivedAmount),
+      totalBalanceAmount: roundRupee(overall.totalBalanceAmount),
+      totalEstimatedBudget: 0,
+      confirmedTotalExpectedAmount: confExpected,
+      confirmedTotalBookingsNumber: confBookings,
+      pendingTotalExpectedAmount: pendExpected,
+      pendingTotalBookingsNumber: pendBookings,
+    },
+    confirmed: {
+      totalExpectedAmount: confExpected,
+      totalBookingsNumber: confBookings,
+      totalAgreedAmount: roundRupee(confirmedRow.totalAgreedAmount),
+      totalReceivedAmount: roundRupee(confirmedRow.totalReceivedAmount),
+      bookingsWithAnyReceiptCount: confirmedRow.bookingsWithAnyReceiptCount,
+      totalBalanceAmount: roundRupee(confirmedRow.totalBalanceAmount),
+      bookingsWithOutstandingBalanceCount:
+        confirmedRow.bookingsWithOutstandingBalanceCount,
+    },
+    pending: pendingPayload,
+    inprogress: pendingPayload,
+    cancelled: {
+      totalBookingsNumber: cancelledRow.totalBookings,
+      totalExpectedAmount: cancExpected,
+      totalAgreedAmount: cancExpected,
+      totalReceivedAmount: roundRupee(cancelledRow.totalReceivedAmount),
+      totalBalanceAmount: roundRupee(cancelledRow.totalBalanceAmount),
+    },
+  };
+}
+
+/**
+ * Marketing estimated-budget card on GET /events.
+ * Ignores venue/eventName/date-range query params; still applies the global cutoff.
+ */
+async function sumLeadsEstimatedBudgetRespectingCutoff() {
+  const query = { convertedByMarketing: { $ne: true } };
+  applyDateFieldCutoff(query, 'startDate', await getDataCutoffDate());
+  const rows = await ClientLead.aggregate([
+    { $match: query },
     {
-      $addFields: {
-        _payableRaw: {
-          $cond: [
-            { $eq: ['$advancePaymentType', 'complete'] },
-            num({
-              $let: {
-                vars: { ft: { $arrayElemAt: ['$eventTypes', 0] } },
-                in: '$$ft.totalPayable',
-              },
-            }),
-            {
-              $reduce: {
-                input: { $ifNull: ['$eventTypes', []] },
-                initialValue: 0,
-                in: {
-                  $add: ['$$value', num('$$this.totalPayable')],
+      $group: {
+        _id: null,
+        total: {
+          $sum: {
+            $round: [
+              {
+                $convert: {
+                  input: '$estimatedBudget',
+                  to: 'double',
+                  onError: 0,
+                  onNull: 0,
                 },
               },
-            },
-          ],
-        },
-        _receivedRaw: {
-          $reduce: {
-            input: { $ifNull: ['$eventTypes', []] },
-            initialValue: 0,
-            in: {
-              $add: [
-                '$$value',
-                {
-                  $reduce: {
-                    input: { $ifNull: ['$$this.advances', []] },
-                    initialValue: 0,
-                    in: {
-                      $add: ['$$value', num('$$this.receivedAmount')],
-                    },
-                  },
-                },
-              ],
-            },
+              0,
+            ],
           },
         },
-      },
-    },
-    {
-      $addFields: {
-        _payable: { $round: ['$_payableRaw', 0] },
-        _received: { $round: ['$_receivedRaw', 0] },
-      },
-    },
-    {
-      $facet: {
-        overall: [
-          {
-            $group: {
-              _id: null,
-              totalBookings: { $sum: 1 },
-              totalPayableSum: { $sum: '$_payable' },
-              totalReceivedAmount: { $sum: '$_received' },
-            },
-          },
-        ],
-        byStatus: [
-          {
-            $group: {
-              _id: { $ifNull: ['$eventConfirmation', '_none'] },
-              totalBookings: { $sum: 1 },
-              totalPayableSum: { $sum: '$_payable' },
-              totalReceivedAmount: { $sum: '$_received' },
-            },
-          },
-        ],
       },
     },
   ])
     .option({ maxTimeMS: AGG_MAX_MS })
     .exec();
-
-  const root = rows[0] || {};
-  const overall = (root.overall && root.overall[0]) || {};
-  const byStatus = Array.isArray(root.byStatus) ? root.byStatus : [];
-  const lookup = new Map(byStatus.map((r) => [String(r._id), r]));
-
-  const asPayload = (row) => {
-    const payable = roundRupee(row?.totalPayableSum);
-    const received = roundRupee(row?.totalReceivedAmount);
-    return {
-      totalBookings: Number(row?.totalBookings) || 0,
-      totalPayableSum: payable,
-      totalReceivedAmount: received,
-      totalPending: roundRupee(payable - received),
-    };
-  };
-
-  return {
-    all: asPayload(overall),
-    confirmed: asPayload(lookup.get('Confirmed Event')),
-    inprogress: asPayload(lookup.get('InProgress')),
-  };
+  return roundRupee(rows[0]?.total);
 }
 
 /** @returns {{ start: Date, end: Date, label: string } | { error: string }} — end is exclusive (UTC) */
@@ -691,7 +816,7 @@ exports.updateAdvance = async (req, res) => {
       return res.status(400).json({ message: "At least one of receivedAmount, remarks or receivedDate required" });
     }
 
-    const event = await Event.findById(eventId);
+    const event = await findEventDocById(eventId);
     if (!event) return res.status(404).json({ message: "Event not found" });
 
     const eventTypeDoc = selectedEventType
@@ -788,7 +913,7 @@ exports.addAdvanceToEventType = async (req, res) => {
       return res.status(400).json({ message: "advanceNumber must be a number" });
     }
 
-    const event = await Event.findById(eventId);
+    const event = await findEventDocById(eventId);
     if (!event) return res.status(404).json({ message: "Event not found" });
 
     const eventTypeDoc = findEventTypeByIdentifier(event, eventTypeId);
@@ -870,17 +995,17 @@ exports.getEvent = async (req, res) => {
       return res.status(401).json({ message: "Invalid token" });
     }
 
-    const event = await Event.findById(req.params.eventId)
-      .populate('eventName', 'id name')
-      .populate('eventTypes.eventType', 'id name event')
-      .populate('eventTypes.venueLocation', 'id name address city state')
-      .populate('eventTypes.subVenueLocation', 'id name venue')
-      .populate('eventTypes.coordinator', 'id name contact_number email')
-      .populate('lead1', 'id name contact_number email')
-      .populate('lead2', 'id name contact_number email')
-      .populate('createdBy', 'id first_name last_name');
-    
+    const event = await findEventDocById(req.params.eventId);
     if (!event) return res.status(404).json({ message: "Event not found" });
+
+    await event.populate('eventName', 'id name');
+    await event.populate('eventTypes.eventType', 'id name event');
+    await event.populate('eventTypes.venueLocation', 'id name address city state');
+    await event.populate('eventTypes.subVenueLocation', 'id name venue');
+    await event.populate('eventTypes.coordinator', 'id name contact_number email');
+    await event.populate('lead1', 'id name contact_number email');
+    await event.populate('lead2', 'id name contact_number email');
+    await event.populate('createdBy', 'id first_name last_name');
 
     // Check if user has access (owner or ADMIN/OWNER can see all)
     // if (decodedToken.role !== 'ADMIN' && decodedToken.role !== 'OWNER') {
@@ -920,7 +1045,7 @@ exports.deleteEvent = async (req, res) => {
     const uid = decodedToken?.uid || req.userId || null;
     const role = String(decodedToken?.role || "").toUpperCase();
 
-    const event = await Event.findById(eventId).select("_id createdBy").lean();
+    const event = await findEventDocById(eventId);
     if (!event) {
       return res.status(STATUS.NOT_FOUND).json({ message: "Event not found" });
     }
@@ -932,18 +1057,21 @@ exports.deleteEvent = async (req, res) => {
       return res.status(STATUS.FORBIDDEN).json({ message: "Access denied. Cannot delete this event." });
     }
 
-    const eventObjId = new mongoose.Types.ObjectId(eventId);
-
     // Detach references first (keeps request history readable)
     await Promise.all([
       Request.updateMany(
-        { event_reference: eventObjId },
+        { event_reference: { $in: idQueryValues(eventId) } },
         { $set: { event_reference: null } }
       ),
-      BudgetReport.deleteMany({ eventId: eventObjId }),
+      BudgetReport.deleteMany({ eventId: { $in: idQueryValues(eventId) } }),
+      SpreadsheetWorkbook.deleteMany({
+        module: 'budget-report',
+        key: String(eventId),
+      }),
     ]);
 
-    const deleted = await Event.findByIdAndDelete(eventObjId).lean();
+    const deleteResult = await Event.collection.deleteOne({ _id: event._id });
+    const deleted = deleteResult?.deletedCount ? event : null;
     if (!deleted) {
       // Rare race condition: document disappeared after we checked.
       return res.status(STATUS.NOT_FOUND).json({ message: "Event not found" });
@@ -1001,6 +1129,8 @@ exports.getLeaderboard = async (req, res) => {
       match.createdAt = { $gte: parsed.start, $lt: parsed.end };
       monthLabel = parsed.label;
     }
+
+    applyEventTypesStartDateCutoff(match, await getDataCutoffDate());
 
     const page = Math.max(1, parseInt(req.query.page, 10) || 1);
     const limitRaw = req.query.limit != null && req.query.limit !== '' ? parseInt(req.query.limit, 10) : null;
@@ -1141,20 +1271,32 @@ exports.getLeaderboard = async (req, res) => {
 /**
  * GET /api/events/balance-sheet
  * Confirmed bookings only. Per row: payable (totalPayable rule) − received (sum of advances received) = balance.
- * Optional filters match GET /api/events: eventName, startDate, endDate, venue, subVenue; optional page & limit.
+ * Optional filters match GET /api/events: eventName, startDate, endDate, venue, subVenue, search; optional page & limit.
  */
 exports.getConfirmedEventsBalanceSheet = async (req, res) => {
   try {
     const baseQuery = {};
 
     const eventNameFilter = req.query.eventName?.trim();
+    const search = req.query.search?.trim();
     const parseDate = (value) => {
       if (!value) return null;
       const d = new Date(value);
       return Number.isNaN(d.getTime()) ? null : d;
     };
-    const startDate = parseDate(req.query.startDate);
-    const endDate = parseDate(req.query.endDate);
+    const startDateStr = req.query.startDate != null ? String(req.query.startDate).trim() : '';
+    const endDateStr = req.query.endDate != null ? String(req.query.endDate).trim() : '';
+    const startDate = startDateStr ? parseDate(startDateStr) : null;
+    const endDate = endDateStr ? parseDate(endDateStr) : null;
+    if (startDateStr && !startDate) {
+      return res.status(STATUS.BAD_REQUEST).json({ message: 'Invalid startDate', example: '2026-04-01' });
+    }
+    if (endDateStr && !endDate) {
+      return res.status(STATUS.BAD_REQUEST).json({ message: 'Invalid endDate', example: '2026-04-30' });
+    }
+    if (startDate && endDate && startDate > endDate) {
+      return res.status(STATUS.BAD_REQUEST).json({ message: 'startDate must be <= endDate' });
+    }
     const venueIdRaw = (req.query.venue || req.query.venueLocation || '').toString().trim();
     const subVenueIdRaw = (req.query.subVenue || req.query.subVenueLocation || '').toString().trim();
     const venueId = venueIdRaw ? venueIdRaw : null;
@@ -1174,7 +1316,7 @@ exports.getConfirmedEventsBalanceSheet = async (req, res) => {
 
     if (eventNameFilter) {
       if (mongoose.Types.ObjectId.isValid(eventNameFilter)) {
-        baseQuery.eventName = toObjectIdForMatch(eventNameFilter);
+        baseQuery.eventName = { $in: idQueryValues(eventNameFilter) };
       } else {
         const safePattern = escapeRegex(eventNameFilter);
         const matchingNames = await EventName.find(
@@ -1202,13 +1344,39 @@ exports.getConfirmedEventsBalanceSheet = async (req, res) => {
       }
     }
 
-    if (startDate || endDate || venueId || subVenueId) {
-      baseQuery.eventTypes = { $elemMatch: {} };
-      if (startDate) baseQuery.eventTypes.$elemMatch.startDate = { $gte: startDate };
-      if (endDate) baseQuery.eventTypes.$elemMatch.endDate = { $lte: endDate };
-      if (venueId) baseQuery.eventTypes.$elemMatch.venueLocation = new mongoose.Types.ObjectId(venueId);
-      if (subVenueId) baseQuery.eventTypes.$elemMatch.subVenueLocation = new mongoose.Types.ObjectId(subVenueId);
+    if (search) {
+      const safePattern = escapeRegex(search);
+      const searchRegex = { $regex: safePattern, $options: 'i' };
+      const searchOr = [
+        { clientName: searchRegex },
+        { brideName: searchRegex },
+        { groomName: searchRegex },
+        { contactNumber: searchRegex },
+        { altContactNumber: searchRegex },
+        { altContactName: searchRegex },
+        { note: searchRegex },
+      ];
+
+      const matchingEventNames = await EventName.find(
+        { name: searchRegex },
+        '_id'
+      )
+        .lean()
+        .maxTimeMS(10000);
+      const eventNameIdsFromSearch = matchingEventNames.map((item) => item._id);
+      if (eventNameIdsFromSearch.length) {
+        searchOr.push({ eventName: { $in: eventNameIdsFromSearch } });
+      }
+
+      baseQuery.$or = searchOr;
     }
+
+    applyEventTypesElemFilter(baseQuery, {
+      startGte: mergeCutoffIntoStartDate(startDate, await getDataCutoffDate()),
+      endLte: endDate,
+      venueIds: idQueryValues(venueId),
+      subVenueIds: idQueryValues(subVenueId),
+    });
 
     const query = { ...baseQuery, eventConfirmation: 'Confirmed Event' };
 
@@ -1271,7 +1439,10 @@ exports.getConfirmedEventsBalanceSheet = async (req, res) => {
 /** GET /api/events/minimal — booking id, eventName { _id, name }, and client details */
 exports.getAllEventsMinimal = async (req, res) => {
   try {
-    const rows = await Event.find({})
+    const minimalQuery = {};
+    applyEventTypesStartDateCutoff(minimalQuery, await getDataCutoffDate());
+
+    const rows = await Event.find(minimalQuery)
       .select(
         '_id eventName clientName brideName groomName contactNumber altContactNumber altContactName note eventConfirmation'
       )
@@ -1353,7 +1524,7 @@ exports.getAllEvents = async (req, res) => {
     // Filter by eventName (supports ObjectId or name search)
     if (eventNameFilter) {
       if (mongoose.Types.ObjectId.isValid(eventNameFilter)) {
-        baseQuery.eventName = toObjectIdForMatch(eventNameFilter);
+        baseQuery.eventName = { $in: idQueryValues(eventNameFilter) };
       } else {
         const safePattern = escapeRegex(eventNameFilter);
         const matchingNames = await EventName.find(
@@ -1369,16 +1540,58 @@ exports.getAllEvents = async (req, res) => {
               summaryScope: 'allBookingsMatchingFilter',
               totalBookings: 0,
               bookingsInResponse: 0,
-              totalExpectedAdvance: 0,
+              totalAgreedAmount: 0,
               totalReceivedAmount: 0,
+              totalPendingAmount: 0,
+              totalExpectedAdvance: 0,
+              totalPendingAdvance: 0,
               totalPending: 0,
               totalAdvanceEntries: 0,
               totalPayableSum: 0,
             },
             totalsByStatus: {
-              all: { totalBookings: 0, totalPayableSum: 0, totalReceivedAmount: 0, totalPending: 0 },
-              confirmed: { totalBookings: 0, totalPayableSum: 0, totalReceivedAmount: 0, totalPending: 0 },
-              inprogress: { totalBookings: 0, totalPayableSum: 0, totalReceivedAmount: 0, totalPending: 0 },
+              all: {
+                totalExpectedAmount: 0,
+                totalBookingsNumber: 0,
+                totalAgreedAmount: 0,
+                totalReceivedAmount: 0,
+                totalBalanceAmount: 0,
+                totalEstimatedBudget: 0,
+                confirmedTotalExpectedAmount: 0,
+                confirmedTotalBookingsNumber: 0,
+                pendingTotalExpectedAmount: 0,
+                pendingTotalBookingsNumber: 0,
+              },
+              confirmed: {
+                totalExpectedAmount: 0,
+                totalBookingsNumber: 0,
+                totalAgreedAmount: 0,
+                totalReceivedAmount: 0,
+                bookingsWithAnyReceiptCount: 0,
+                totalBalanceAmount: 0,
+                bookingsWithOutstandingBalanceCount: 0,
+              },
+              pending: {
+                totalBookingsNumber: 0,
+                totalExpectedAmount: 0,
+                totalAgreedAmount: 0,
+                totalReceivedAmount: 0,
+                totalBalanceAmount: 0,
+              },
+              inprogress: {
+                totalBookingsNumber: 0,
+                totalExpectedAmount: 0,
+                totalAgreedAmount: 0,
+                totalReceivedAmount: 0,
+                totalBalanceAmount: 0,
+              },
+              cancelled: {
+                totalBookingsNumber: 0,
+                totalExpectedAmount: 0,
+                totalAgreedAmount: 0,
+                totalReceivedAmount: 0,
+                totalBalanceAmount: 0,
+              },
             },
             page,
             limit: limit || null,
@@ -1388,14 +1601,12 @@ exports.getAllEvents = async (req, res) => {
       }
     }
 
-    // Filter by event type date range (startDate/endDate)
-    if (startDate || endDate || venueId || subVenueId) {
-      baseQuery.eventTypes = { $elemMatch: {} };
-      if (startDate) baseQuery.eventTypes.$elemMatch.startDate = { $gte: startDate };
-      if (endDate) baseQuery.eventTypes.$elemMatch.endDate = { $lte: endDate };
-      if (venueId) baseQuery.eventTypes.$elemMatch.venueLocation = new mongoose.Types.ObjectId(venueId);
-      if (subVenueId) baseQuery.eventTypes.$elemMatch.subVenueLocation = new mongoose.Types.ObjectId(subVenueId);
-    }
+    applyEventTypesElemFilter(baseQuery, {
+      startGte: mergeCutoffIntoStartDate(startDate, await getDataCutoffDate()),
+      endLte: endDate,
+      venueIds: idQueryValues(venueId),
+      subVenueIds: idQueryValues(subVenueId),
+    });
 
     const query = mappedConfirmation
       ? { ...baseQuery, eventConfirmation: mappedConfirmation }
@@ -1414,15 +1625,19 @@ exports.getAllEvents = async (req, res) => {
       .maxTimeMS(25000)
       .lean();
 
-    const [totalEvents, events, advanceSummaryAll, payableSummaryAll, totalsByStatus] = await Promise.all([
+    const [totalEvents, events, advanceSummaryAll, payableSummaryAll, agreedSummaryAll, totalsByStatus, leadsEstimatedBudget] = await Promise.all([
       Event.countDocuments(query).maxTimeMS(25000),
       limit != null
         ? baseFind.skip((page - 1) * limit).limit(limit)
         : baseFind,
       aggregateEventsAdvanceSummary(query),
       aggregateEventsTotalPayableSummary(query),
+      aggregateEventsAgreedSummary(query),
       aggregateEventsPayableReceivedBookingsByStatus(baseQuery),
+      sumLeadsEstimatedBudgetRespectingCutoff(),
     ]);
+
+    totalsByStatus.all.totalEstimatedBudget = leadsEstimatedBudget;
 
     const eventsWithTotals = events.map((ev) => {
       const advanceTotals = computeAdvanceTotals(ev);
@@ -1430,10 +1645,6 @@ exports.getAllEvents = async (req, res) => {
     });
 
     const eventsWithBudget = await mergeBudgetIntoEventRows(eventsWithTotals);
-    const totalPending = roundRupee(
-      roundRupee(payableSummaryAll.totalPayableSum) -
-        roundRupee(advanceSummaryAll.totalReceivedAmount)
-    );
 
     res.status(200).json({
       totalEvents,
@@ -1442,10 +1653,13 @@ exports.getAllEvents = async (req, res) => {
         summaryScope: 'allBookingsMatchingFilter',
         totalBookings: totalEvents,
         bookingsInResponse: eventsWithBudget.length,
-        totalExpectedAdvance: advanceSummaryAll.totalExpectedAdvance,
-        totalReceivedAmount: advanceSummaryAll.totalReceivedAmount,
-        totalPending,
+        totalAgreedAmount: agreedSummaryAll.totalAgreedAmount,
+        totalReceivedAmount: agreedSummaryAll.totalReceivedAmount,
+        totalPendingAmount: agreedSummaryAll.totalPendingAmount,
         totalAdvanceEntries: advanceSummaryAll.totalAdvanceEntries,
+        totalExpectedAdvance: advanceSummaryAll.totalExpectedAdvance,
+        totalPendingAdvance: advanceSummaryAll.totalPendingAdvance,
+        totalPending: agreedSummaryAll.totalPendingAmount,
         totalPayableSum: payableSummaryAll.totalPayableSum,
       },
       totalsByStatus,
@@ -1522,7 +1736,7 @@ exports.getMyEvents = async (req, res) => {
 
     if (eventNameFilter) {
       if (mongoose.Types.ObjectId.isValid(eventNameFilter)) {
-        query.eventName = toObjectIdForMatch(eventNameFilter);
+        query.eventName = { $in: idQueryValues(eventNameFilter) };
       } else {
         const safePattern = escapeRegex(eventNameFilter);
         const matchingNames = await EventName.find(
@@ -1540,8 +1754,10 @@ exports.getMyEvents = async (req, res) => {
               summaryScope: 'allBookingsMatchingFilter',
               totalBookings: 0,
               bookingsInResponse: 0,
-              totalExpectedAdvance: 0,
+              totalAgreedAmount: 0,
               totalReceivedAmount: 0,
+              totalPendingAmount: 0,
+              totalExpectedAdvance: 0,
               totalPendingAdvance: 0,
               totalAdvanceEntries: 0,
               totalPayableSum: 0,
@@ -1554,13 +1770,12 @@ exports.getMyEvents = async (req, res) => {
       }
     }
 
-    if (startDate || endDate || venueId || subVenueId) {
-      query.eventTypes = { $elemMatch: {} };
-      if (startDate) query.eventTypes.$elemMatch.startDate = { $gte: startDate };
-      if (endDate) query.eventTypes.$elemMatch.endDate = { $lte: endDate };
-      if (venueId) query.eventTypes.$elemMatch.venueLocation = new mongoose.Types.ObjectId(venueId);
-      if (subVenueId) query.eventTypes.$elemMatch.subVenueLocation = new mongoose.Types.ObjectId(subVenueId);
-    }
+    applyEventTypesElemFilter(query, {
+      startGte: mergeCutoffIntoStartDate(startDate, await getDataCutoffDate()),
+      endLte: endDate,
+      venueIds: idQueryValues(venueId),
+      subVenueIds: idQueryValues(subVenueId),
+    });
 
     const baseFind = Event.find(query)
       .populate('eventName', 'id name')
@@ -1575,13 +1790,14 @@ exports.getMyEvents = async (req, res) => {
       .maxTimeMS(25000)
       .lean();
 
-    const [totalEvents, events, advanceSummaryAll, payableSummaryAll] = await Promise.all([
+    const [totalEvents, events, advanceSummaryAll, payableSummaryAll, agreedSummaryAll] = await Promise.all([
       Event.countDocuments(query).maxTimeMS(25000),
       limit != null
         ? baseFind.skip((page - 1) * limit).limit(limit)
         : baseFind,
       aggregateEventsAdvanceSummary(query),
       aggregateEventsTotalPayableSummary(query),
+      aggregateEventsAgreedSummary(query),
     ]);
 
     const eventsWithTotals = events.map((ev) => ({
@@ -1599,11 +1815,13 @@ exports.getMyEvents = async (req, res) => {
       summary: {
         summaryScope: 'allBookingsMatchingFilter',
         totalBookings: totalEvents,
-        bookingsInResponse: eventsWithTotals.length,
-        totalExpectedAdvance: advanceSummaryAll.totalExpectedAdvance,
-        totalReceivedAmount: advanceSummaryAll.totalReceivedAmount,
-        totalPendingAdvance: advanceSummaryAll.totalPendingAdvance,
+        bookingsInResponse: eventsWithBudget.length,
+        totalAgreedAmount: agreedSummaryAll.totalAgreedAmount,
+        totalReceivedAmount: agreedSummaryAll.totalReceivedAmount,
+        totalPendingAmount: agreedSummaryAll.totalPendingAmount,
         totalAdvanceEntries: advanceSummaryAll.totalAdvanceEntries,
+        totalExpectedAdvance: advanceSummaryAll.totalExpectedAdvance,
+        totalPendingAdvance: advanceSummaryAll.totalPendingAdvance,
         totalPayableSum: payableSummaryAll.totalPayableSum,
       },
       ...(mappedConfirmation && { eventConfirmationFilter: mappedConfirmation }),
@@ -1665,7 +1883,7 @@ exports.editEventExceptReceivedAmount = async (req, res) => {
       return res.status(400).json({ message: "contactNumber is required" });
     }
 
-    const event = await Event.findById(eventId);
+    const event = await findEventDocById(eventId);
     if (!event) return res.status(404).json({ message: "Event not found" });
 
     // Check if user has access (owner or ADMIN/OWNER can edit all)

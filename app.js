@@ -93,6 +93,10 @@ const subVenueLocationRoutes = require("./Routes/SubVenueLocation");
 const budgetReportRoutes = require("./Routes/BudgetReport");
 const clientLeadRoutes = require("./Routes/ClientLead");
 const daybookRoutes = require("./Routes/daybook");
+const marketingTargetRoutes = require("./Routes/MarketingTarget");
+const personalCalendarRoutes = require("./Routes/PersonalCalendar");
+const spreadsheetWorkbookRoutes = require("./Routes/SpreadsheetWorkbook");
+const settingsRoutes = require("./Routes/Settings");
 
 
 app.use(`${API_ROOT}department`, departmentRoutes);
@@ -111,6 +115,10 @@ app.use(`${API_ROOT}sub-venue-location`, subVenueLocationRoutes);
 app.use(`${API_ROOT}budget-report`, budgetReportRoutes);
 app.use(`${API_ROOT}client-leads`, clientLeadRoutes);
 app.use(`${API_ROOT}daybook`, daybookRoutes);
+app.use(`${API_ROOT}marketing-targets`, marketingTargetRoutes);
+app.use(`${API_ROOT}personal-calendar`, personalCalendarRoutes);
+app.use(`${API_ROOT}spreadsheet-workbooks`, spreadsheetWorkbookRoutes);
+app.use(`${API_ROOT}settings`, settingsRoutes);
 
 
 

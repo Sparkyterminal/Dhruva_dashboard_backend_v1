@@ -21,6 +21,16 @@ const daybookAccountsOpenCloseBalanceSchema = new Schema(
       required: true,
       min: 0,
     },
+    accountBalances: {
+      type: [
+        {
+          accountName: { type: String, required: true, trim: true },
+          openingBalance: { type: Number, required: true, min: 0 },
+          closingBalance: { type: Number, required: true, min: 0 },
+        },
+      ],
+      default: [],
+    },
     accountOpeningBalance: {
       type: Number,
       required: true,

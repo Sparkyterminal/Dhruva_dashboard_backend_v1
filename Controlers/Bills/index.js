@@ -141,6 +141,7 @@
 //   }
 // };
 const Bill = require('../../Modals/Bills');
+const { getDataCutoffDate, cutoffToUtcDate } = require('../../utils/dataCutoff');
 
 // Helper to get month and year from a Date object
 const getMonthYear = (date) => ({
@@ -240,7 +241,15 @@ exports.createBill = async (req, res) => {
 // Get all bills with enhanced emiStatus
 exports.getBills = async (req, res) => {
   try {
-    const bills = await Bill.find().sort({ startDate: 1, emiDate: 1 });
+    const cutoff = cutoffToUtcDate(await getDataCutoffDate());
+    const billQuery = cutoff
+      ? {
+          $expr: {
+            $gte: [{ $ifNull: ['$startDate', '$emiDate'] }, cutoff],
+          },
+        }
+      : {};
+    const bills = await Bill.find(billQuery).sort({ startDate: 1, emiDate: 1 });
 
     const enhancedBills = bills.map(bill => {
       const start = bill.startDate || bill.emiDate;

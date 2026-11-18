@@ -14,8 +14,10 @@ router.post(
         body('transation_in').isIn(['CASH','ACCOUNT']),
         body('vendor').optional({ nullable: true }).isMongoId(),
         body('event_reference').optional({ nullable: true }).isMongoId(),
+        body('groupBy').optional({ nullable: true }).isMongoId(),
         body('priority').isIn(['HIGH', 'MEDIUM', 'LOW']),
-        body('required_date').optional({ nullable: true }).isISO8601().toDate()
+        body('required_date').optional({ nullable: true }).isISO8601().toDate(),
+        body('remarks').optional({ nullable: true }).isString(),
     ],
     requestController.createRequest
 );
@@ -46,6 +48,15 @@ router.get(
     requestController.getRequests
 );
 
+// Request "group by" labels (must be before /:id)
+router.get("/group-by", isAuth, requestController.listRequestGroupBy);
+router.post(
+    "/group-by",
+    isAuth,
+    [body("name").trim().notEmpty().isLength({ min: 1, max: 200 })],
+    requestController.createRequestGroupBy
+);
+router.delete("/group-by/:id", isAuth, requestController.deleteRequestGroupBy);
 
 // Owner can get specific request details
 router.get(
@@ -66,6 +77,13 @@ router.patch(
     "/:id/archive",
     isAuth,
     requestController.archiveRequest
+);
+
+// Hard delete request
+router.delete(
+    "/:id",
+    isAuth,
+    requestController.deleteRequest
 );
 
 router.get('/department/:id', isAuth, requestController.getRequestsByDepartmentId);

@@ -3,6 +3,8 @@ const MESSAGE = require("../../utils/messages");
 const mongoose = require('mongoose');
 
 const Request = require("../../Modals/Request");
+const { getDataCutoffDate, applyDateFieldCutoff } = require("../../utils/dataCutoff");
+const RequestGroupBy = require("../../Modals/RequestGroupBy");
 const { validationResult } = require("express-validator");
 const jwt = require('jsonwebtoken');
 const Department = require("../../Modals/Department");
@@ -74,9 +76,11 @@ module.exports.createRequest = async (req, res) => {
             amount,
             priority,
             note,
+            remarks,
             transation_in,
             vendor,
-            event_reference
+            event_reference,
+            groupBy,
         } = req.body;
 
         // Validate amount
@@ -135,6 +139,26 @@ module.exports.createRequest = async (req, res) => {
             }
         }
 
+        let groupById = null;
+        const rawGroupBy = groupBy !== undefined ? groupBy : req.body.groupby;
+        if (rawGroupBy !== undefined && rawGroupBy !== null && String(rawGroupBy).trim() !== '') {
+            const gbStr = String(rawGroupBy).trim();
+            if (!mongoose.Types.ObjectId.isValid(gbStr)) {
+                return res.status(STATUS.VALIDATION_FAILED).json({
+                    message: 'Invalid groupBy ID',
+                    field: 'groupBy',
+                });
+            }
+            const gbDoc = await RequestGroupBy.findById(gbStr).select('_id').lean();
+            if (!gbDoc) {
+                return res.status(STATUS.NOT_FOUND).json({
+                    message: 'groupBy record not found',
+                    field: 'groupBy',
+                });
+            }
+            groupById = gbDoc._id;
+        }
+
         const request = new Request({
             purpose: purpose.trim(),
             required_date: requiredDateObj,
@@ -145,8 +169,10 @@ module.exports.createRequest = async (req, res) => {
             department: departmentId,
             status: 'PENDING',
             transation_in: transation_in || 'CASH',
+            remarks: remarks ? String(remarks).trim() : '',
             vendor: vendor || null,
-            event_reference: event_reference || null
+            event_reference: event_reference || null,
+            groupBy: groupById,
         });
 
         const savedRequest = await request.save();
@@ -159,10 +185,13 @@ module.exports.createRequest = async (req, res) => {
                 amount: savedRequest.amount,
                 required_date: savedRequest.required_date,
                 priority: savedRequest.priority,
+                note: savedRequest.note,
+                remarks: savedRequest.remarks,
                 status: savedRequest.status,
                 transation_in: savedRequest.transation_in,
                 vendor: savedRequest.vendor,
-                event_reference: savedRequest.event_reference
+                event_reference: savedRequest.event_reference,
+                groupBy: savedRequest.groupBy,
             }
         });
     } catch (error) {
@@ -212,6 +241,8 @@ module.exports.getMyRequests = async (req, res) => {
             query.required_date = { $lte: requiredDateEnd };
         }
 
+        applyDateFieldCutoff(query, 'required_date', await getDataCutoffDate());
+
         const documentCount = await Request.countDocuments(query);
         const requests = await Request.find(query)
             .sort({ createdAt: -1 })
@@ -228,6 +259,7 @@ module.exports.getMyRequests = async (req, res) => {
                     select: 'id name'
                 }
             })
+            .populate('groupBy', 'id name')
             .exec();
 
         return res.status(STATUS.SUCCESS).json({
@@ -269,6 +301,7 @@ module.exports.getMyRequestById = async (req, res) => {
                     select: 'id name'
                 }
             })
+            .populate('groupBy', 'id name')
             .exec();
 
         if (!request) {
@@ -321,6 +354,7 @@ module.exports.getAllRequests = async (req, res) => {
       const approverCheck = req.query.approver_check;
       const eventId = req.query.event || req.query.eventId;
       const vendorId = req.query.vendor || req.query.vendorId;
+      const groupByFilter = (req.query.groupBy || req.query.groupby || '').toString().trim();
       const search = req.query.search?.trim();
   
       // Date filter for createdAt (startDate, endDate)
@@ -350,6 +384,9 @@ module.exports.getAllRequests = async (req, res) => {
       if (approverCheck) query.approver_check = approverCheck;
       if (eventId && mongoose.Types.ObjectId.isValid(eventId)) query.event_reference = eventId;
       if (vendorId && mongoose.Types.ObjectId.isValid(vendorId)) query.vendor = vendorId;
+      if (groupByFilter && mongoose.Types.ObjectId.isValid(groupByFilter)) {
+        query.groupBy = new mongoose.Types.ObjectId(groupByFilter);
+      }
   
       // Date filtering for createdAt (startDate, endDate)
       if (startDate && endDate) {
@@ -368,6 +405,8 @@ module.exports.getAllRequests = async (req, res) => {
       } else if (requiredDateEnd) {
         query.required_date = { $lte: requiredDateEnd };
       }
+
+      applyDateFieldCutoff(query, 'required_date', await getDataCutoffDate());
   
       // Search filter in multiple fields, including department name
       let departmentIds = [];
@@ -405,6 +444,7 @@ module.exports.getAllRequests = async (req, res) => {
           .populate('vendor', 'id name vendor_code')
           .populate('ca_approved_by', 'id first_name last_name email_data designation role')
           .populate('event_reference', 'id clientName name')
+          .populate('groupBy', 'id name')
           .lean()
           .exec(),
       ]);
@@ -567,6 +607,7 @@ module.exports.getRequestById = async (req, res) => {
                     select: 'id name'
                 }
             })
+            .populate('groupBy', 'id name')
             .exec();
 
         if (!request) {
@@ -609,7 +650,8 @@ module.exports.updateRequest = async (req, res) => {
             amount_paid_to,
             remarks,
             is_active,
-            ca_approved
+            ca_approved,
+            groupBy,
         } = req.body;
 
         const request = await Request.findById(id);
@@ -755,6 +797,29 @@ module.exports.updateRequest = async (req, res) => {
             });
         }
 
+        if (groupBy !== undefined || req.body.groupby !== undefined) {
+            const rawGb = groupBy !== undefined ? groupBy : req.body.groupby;
+            if (rawGb === null || rawGb === '') {
+                updateData.groupBy = null;
+            } else {
+                const gbStr = String(rawGb).trim();
+                if (!mongoose.Types.ObjectId.isValid(gbStr)) {
+                    return res.status(STATUS.VALIDATION_FAILED).json({
+                        message: 'Invalid groupBy ID',
+                        field: 'groupBy',
+                    });
+                }
+                const gbDoc = await RequestGroupBy.findById(gbStr).select('_id').lean();
+                if (!gbDoc) {
+                    return res.status(STATUS.NOT_FOUND).json({
+                        message: 'groupBy record not found',
+                        field: 'groupBy',
+                    });
+                }
+                updateData.groupBy = gbDoc._id;
+            }
+        }
+
         updateData.handled_by = decodedToken.uid;
 
         if (Object.keys(updateData).length === 0) {
@@ -780,6 +845,7 @@ module.exports.updateRequest = async (req, res) => {
                     select: 'id name'
                 }
             })
+            .populate('groupBy', 'id name')
             .exec();
 
         return res.status(STATUS.SUCCESS).json({
@@ -940,6 +1006,7 @@ module.exports.archiveRequest = async (req, res) => {
                     select: 'id name'
                 }
             })
+            .populate('groupBy', 'id name')
             .exec();
 
         return res.status(STATUS.SUCCESS).json({
@@ -951,6 +1018,45 @@ module.exports.archiveRequest = async (req, res) => {
         });
     } catch (error) {
         console.error('Error archiving request:', error);
+        return res.status(STATUS.INTERNAL_SERVER_ERROR).json({
+            message: MESSAGE.internalServerError,
+            error: error.message,
+        });
+    }
+};
+
+module.exports.deleteRequest = async (req, res) => {
+    const token = req.get('Authorization');
+    const decodedToken = await jwt.decode(token);
+
+    // Allow any authenticated role to delete requests
+    if (!decodedToken?.role) {
+        return res.status(STATUS.UNAUTHORISED).json({
+            message: MESSAGE.unauthorized,
+        });
+    }
+
+    try {
+        const { id } = req.params;
+        if (!id || !mongoose.Types.ObjectId.isValid(id)) {
+            return res.status(STATUS.BAD_REQUEST).json({
+                message: 'Valid request id is required',
+            });
+        }
+
+        const deleted = await Request.findByIdAndDelete(id);
+        if (!deleted) {
+            return res.status(404).json({
+                message: 'Request not found',
+            });
+        }
+
+        return res.status(STATUS.SUCCESS).json({
+            message: 'Request deleted successfully',
+            id: String(id),
+        });
+    } catch (error) {
+        console.error('deleteRequest:', error);
         return res.status(STATUS.INTERNAL_SERVER_ERROR).json({
             message: MESSAGE.internalServerError,
             error: error.message,
@@ -1142,6 +1248,7 @@ module.exports.getRequests = async (req, res) => {
       const approverCheck = req.query.approver_check;
       const eventId = req.query.event || req.query.eventId;
       const vendorId = req.query.vendor || req.query.vendorId;
+      const groupByFilter = (req.query.groupBy || req.query.groupby || '').toString().trim();
       const search = req.query.search?.trim();
 
       const parseDate = (value) => {
@@ -1170,6 +1277,9 @@ module.exports.getRequests = async (req, res) => {
       if (approverCheck) query.approver_check = approverCheck;
       if (eventId && mongoose.Types.ObjectId.isValid(eventId)) query.event_reference = eventId;
       if (vendorId && mongoose.Types.ObjectId.isValid(vendorId)) query.vendor = vendorId;
+      if (groupByFilter && mongoose.Types.ObjectId.isValid(groupByFilter)) {
+        query.groupBy = new mongoose.Types.ObjectId(groupByFilter);
+      }
   
       // Date filtering for createdAt (start/end only)
       if (startDate && endDate) {
@@ -1188,6 +1298,8 @@ module.exports.getRequests = async (req, res) => {
       } else if (requiredDateEnd) {
         query.required_date = { $lte: requiredDateEnd };
       }
+
+      applyDateFieldCutoff(query, 'required_date', await getDataCutoffDate());
   
       // Search filter
       if (search) {
@@ -1212,6 +1324,7 @@ module.exports.getRequests = async (req, res) => {
           .populate('vendor', 'id name vendor_code')
           .populate('ca_approved_by', 'id first_name last_name email_data designation role')
           .populate('event_reference', 'id clientName name')
+          .populate('groupBy', 'id name')
           .lean()
           .exec(),
       ]);
@@ -1260,17 +1373,22 @@ exports.getRequestsByDepartmentId = async (req, res) => {
         }
 
         // Find all requests with the specified department, active and not archived
-        const requests = await Request.find({
+        const cutoff = await getDataCutoffDate();
+        const deptQuery = {
             department: departmentId,
             is_active: true,
             is_archived: false
-        })
+        };
+        applyDateFieldCutoff(deptQuery, 'required_date', cutoff);
+
+        const requests = await Request.find(deptQuery)
         .sort({ createdAt: -1 })
         .populate('requested_by', 'id first_name last_name email_data designation')
         .populate('department', 'id name')
         .populate('vendor', 'id name vendor_code')
         .populate('ca_approved_by', 'id first_name last_name email_data designation role')
         .populate('event_reference', 'id clientName name')
+        .populate('groupBy', 'id name')
         .exec();
 
         if (!requests.length) {
@@ -1283,4 +1401,115 @@ exports.getRequestsByDepartmentId = async (req, res) => {
         console.error('Error fetching requests by department:', error);
         return res.status(STATUS.INTERNAL_SERVER_ERROR).json({ error: error.message });
     }
-}
+};
+
+const GROUP_BY_READ_ROLES = ['OWNER', 'ADMIN', 'DEPARTMENT', 'APPROVER', 'CA'];
+const GROUP_BY_WRITE_ROLES = ['OWNER', 'ADMIN', 'DEPARTMENT'];
+const GROUP_BY_DELETE_ROLES = ['OWNER', 'ADMIN'];
+
+/** GET /request/group-by — list all group labels (sorted by name). */
+module.exports.listRequestGroupBy = async (req, res) => {
+    const token = req.get('Authorization');
+    const decodedToken = jwt.decode(token);
+    if (!decodedToken?.role || !GROUP_BY_READ_ROLES.includes(decodedToken.role)) {
+        return res.status(STATUS.UNAUTHORISED).json({ message: MESSAGE.unauthorized });
+    }
+    try {
+        const items = await RequestGroupBy.find({})
+            .sort({ name: 1 })
+            .lean()
+            .maxTimeMS(15000);
+        return res.status(STATUS.SUCCESS).json({
+            items: items.map((r) => ({
+                _id: String(r._id),
+                id: r._id,
+                name: r.name,
+                createdAt: r.createdAt,
+                updatedAt: r.updatedAt,
+            })),
+        });
+    } catch (error) {
+        console.error('listRequestGroupBy:', error);
+        return res.status(STATUS.INTERNAL_SERVER_ERROR).json({
+            message: MESSAGE.internalServerError,
+            error: error.message,
+        });
+    }
+};
+
+/** POST /request/group-by — create a group label (unique name). */
+module.exports.createRequestGroupBy = async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+        return res.status(STATUS.BAD_REQUEST).json({ message: 'Bad request', errors: errors.array() });
+    }
+    const token = req.get('Authorization');
+    const decodedToken = jwt.decode(token);
+    if (!decodedToken?.role || !GROUP_BY_WRITE_ROLES.includes(decodedToken.role)) {
+        return res.status(STATUS.UNAUTHORISED).json({ message: MESSAGE.unauthorized });
+    }
+    try {
+        const name = String(req.body.name || '').trim();
+        if (!name) {
+            return res.status(STATUS.BAD_REQUEST).json({ message: 'name is required' });
+        }
+        const created = await RequestGroupBy.create({ name });
+        const j = created.toJSON ? created.toJSON() : created;
+        return res.status(STATUS.CREATED).json({
+            message: 'Group created',
+            item: {
+                _id: String(j._id || j.id),
+                id: j._id || j.id,
+                name: j.name,
+                createdAt: j.createdAt,
+                updatedAt: j.updatedAt,
+            },
+        });
+    } catch (error) {
+        if (error && error.code === 11000) {
+            return res.status(409).json({
+                message: 'A group with this name already exists',
+                field: 'name',
+            });
+        }
+        console.error('createRequestGroupBy:', error);
+        return res.status(STATUS.INTERNAL_SERVER_ERROR).json({
+            message: MESSAGE.internalServerError,
+            error: error.message,
+        });
+    }
+};
+
+/** DELETE /request/group-by/:id — delete a group label if no request references it. */
+module.exports.deleteRequestGroupBy = async (req, res) => {
+    const token = req.get('Authorization');
+    const decodedToken = jwt.decode(token);
+    if (!decodedToken?.role || !GROUP_BY_DELETE_ROLES.includes(decodedToken.role)) {
+        return res.status(STATUS.UNAUTHORISED).json({ message: MESSAGE.unauthorized });
+    }
+    const { id } = req.params;
+    if (!id || !mongoose.Types.ObjectId.isValid(id)) {
+        return res.status(STATUS.BAD_REQUEST).json({ message: 'Valid id is required' });
+    }
+    try {
+        const existing = await RequestGroupBy.findById(id).lean();
+        if (!existing) {
+            return res.status(404).json({ message: 'Group not found' });
+        }
+        const refCount = await Request.countDocuments({ groupBy: id });
+        if (refCount > 0) {
+            return res.status(409).json({
+                message: 'Cannot delete: one or more requests still use this group',
+                requestsReferencing: refCount,
+            });
+        }
+        await RequestGroupBy.deleteOne({ _id: id });
+        return res.status(STATUS.SUCCESS).json({ message: 'Group deleted', id: String(id) });
+    } catch (error) {
+        console.error('deleteRequestGroupBy:', error);
+        return res.status(STATUS.INTERNAL_SERVER_ERROR).json({
+            message: MESSAGE.internalServerError,
+            error: error.message,
+        });
+    }
+};

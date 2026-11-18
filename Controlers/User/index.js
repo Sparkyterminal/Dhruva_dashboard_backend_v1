@@ -4,6 +4,7 @@ const FUNCTION = require("../../utils/functions");
 const validations = require("../../utils/validations");
 
 const User = require("../../Modals/User");
+const { getDataCutoffDate } = require("../../utils/dataCutoff");
 const { validationResult } = require("express-validator");
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcrypt');
@@ -23,8 +24,8 @@ const encryptAES = (text) => {
 };
 
 const JWT_SECRET = process.env.JWT_SECRET;
-const TOKEN_VALIDITY = process.env.TOKEN_VALIDITY;
-const TOKEN_MAX_VALIDITY = process.env.TOKEN_MAX_VALIDITY;
+const TOKEN_VALIDITY = (process.env.TOKEN_VALIDITY || '1d').trim();
+const TOKEN_MAX_VALIDITY = (process.env.TOKEN_MAX_VALIDITY || '7d').trim();
 
 module.exports.registerUserWithoutToken = async (req, res) => {
     const errors = validationResult(req);
@@ -167,6 +168,8 @@ module.exports.loginUsingEmail = async (req, res) => {
             { expiresIn: TOKEN_MAX_VALIDITY }
         );
 
+        const dataCutoffDate = await getDataCutoffDate();
+
         const response_data = {
             access_token: accessToken,
             refresh_token: refreshToken,
@@ -176,7 +179,8 @@ module.exports.loginUsingEmail = async (req, res) => {
             role: user.role,
             designation: user.designation,
             is_active: user.is_active,
-            departments:departments
+            departments:departments,
+            dataCutoffDate: dataCutoffDate || null,
         };
 
         return res.status(STATUS.SUCCESS).json({

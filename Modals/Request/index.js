@@ -130,6 +130,12 @@ const requestSchema = new Schema(
             ref: 'Event',
             required: false
         },
+        groupBy: {
+            type: ObjectId,
+            ref: 'RequestGroupBy',
+            required: false,
+            default: null,
+        },
         handled_by: {
             type: ObjectId,
             ref: 'user',
@@ -157,6 +163,7 @@ requestSchema.index({ is_archived: 1, event_reference: 1, createdAt: -1 });
 requestSchema.index({ is_archived: 1, vendor: 1, createdAt: -1 });
 requestSchema.index({ is_archived: 1, required_date: 1 });
 requestSchema.index({ is_archived: 1, accounts_check: 1, ca_check: 1, owner_check: 1, approver_check: 1 });
+requestSchema.index({ is_archived: 1, groupBy: 1 });
 
 requestSchema.set("toJSON", {
     transform: (doc, ret, options) => {

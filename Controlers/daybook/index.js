@@ -8,6 +8,7 @@ const EventType = require("../../Modals/eventTypes");
 const mongoose = require('mongoose');
 const DaybookInflow = require("../../Modals/Daybook/DaybookInflow");
 const DaybookAccountsOpenCloseBalance = require("../../Modals/Daybook/DaybookAccountsOpenCloseBalance");
+const { getDataCutoffDate, isYmdBeforeCutoff } = require("../../utils/dataCutoff");
 
 const EVENT_NAME_COLL = EventName.collection.name;
 const EVENT_TYPE_COLL = EventType.collection.name;
@@ -104,6 +105,199 @@ function getUtcDayRange(dateInput) {
   return { start, end };
 }
 
+/** For a YYYY-MM-DD business day in IST, return UTC bounds. */
+function getIstDayRangeAsUtc(ymd) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(ymd || '').trim())) return null;
+  const startUtc = new Date(`${ymd}T00:00:00.000+05:30`);
+  const endUtc = new Date(`${ymd}T23:59:59.999+05:30`);
+  if (Number.isNaN(startUtc.getTime()) || Number.isNaN(endUtc.getTime())) return null;
+  return { startUtc, endUtc };
+}
+
+/** ISO UTC datetime string (used for daybook response dates). */
+function formatDateIsoUtc(value) {
+  if (!value) return '';
+  const d = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toISOString();
+}
+
+function daybookInflowSortMs(receivedDateStr) {
+  if (typeof receivedDateStr !== 'string') return 0;
+  const raw = receivedDateStr.trim();
+  if (!raw) return 0;
+  const t = new Date(raw).getTime();
+  if (!Number.isNaN(t)) return t;
+  const head = raw.slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(head)) return 0;
+  const fallback = new Date(`${head}T00:00:00.000Z`).getTime();
+  return Number.isNaN(fallback) ? 0 : fallback;
+}
+
+function ymdToIsoUtc(ymd) {
+  if (typeof ymd !== 'string') return '';
+  const v = ymd.trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) return '';
+  const t = new Date(`${v}T00:00:00.000Z`).getTime();
+  return Number.isNaN(t) ? '' : new Date(t).toISOString();
+}
+
+const EVENT_REFERENCE_POPULATE = {
+  path: 'event_reference',
+  select: 'id clientName brideName groomName contactNumber altContactNumber eventConfirmation note meetingDate',
+  populate: {
+    path: 'eventName',
+    select: 'id name',
+  },
+};
+
+function formatEventReferenceForDaybook(ref) {
+  if (!ref) return null;
+
+  if (typeof ref === 'string' || ref instanceof mongoose.Types.ObjectId) {
+    return { id: String(ref) };
+  }
+
+  const eventName = ref.eventName;
+  return {
+    id: String(ref.id || ref._id),
+    clientName: ref.clientName ?? null,
+    brideName: ref.brideName ?? null,
+    groomName: ref.groomName ?? null,
+    contactNumber: ref.contactNumber ?? null,
+    altContactNumber: ref.altContactNumber ?? null,
+    eventConfirmation: ref.eventConfirmation ?? null,
+    note: ref.note ?? null,
+    meetingDate: ref.meetingDate ?? null,
+    eventName: eventName
+      ? {
+          id: String(eventName.id || eventName._id),
+          name: eventName.name ?? null,
+        }
+      : null,
+  };
+}
+
+function formatEventReferenceFromBookingDoc(doc) {
+  if (!doc?._id) return null;
+  const en = Array.isArray(doc._en) ? doc._en[0] : doc._en;
+  return {
+    id: String(doc._id),
+    clientName: doc.clientName ?? null,
+    brideName: doc.brideName ?? null,
+    groomName: doc.groomName ?? null,
+    contactNumber: doc.contactNumber ?? null,
+    altContactNumber: doc.altContactNumber ?? null,
+    eventConfirmation: doc.eventConfirmation ?? null,
+    note: doc.note ?? null,
+    meetingDate: doc.meetingDate ?? null,
+    eventName: en
+      ? {
+          id: String(en._id),
+          name: en.name ?? null,
+        }
+      : null,
+  };
+}
+
+function mapManualDaybookInflowRow(r) {
+  const receivedDateIso = ymdToIsoUtc(r.receivedDate);
+  return {
+    _id: String(r._id),
+    name: r.name,
+    receivedDate: receivedDateIso || r.receivedDate,
+    receivedIn: r.receivedIn,
+    accountName: r.receivedIn === 'ACCOUNT' ? r.accountName : null,
+    amountReceived: r.amountReceived,
+    receivedBy: r.receivedBy,
+    eventReference: formatEventReferenceForDaybook(r.event_reference),
+    note: r.note ?? '',
+  };
+}
+
+/** One row per event advance with receivedDate in range (UTC day window). */
+function mapEventAdvanceDocToDaybookInflow(doc) {
+  const adv = doc.eventTypes?.advances || {};
+  const receivedDate = formatDateIsoUtc(adv.receivedDate);
+  const mode = String(adv.modeOfPayment || '').toLowerCase();
+  const receivedIn = mode === 'account' ? 'ACCOUNT' : 'CASH';
+  const en = Array.isArray(doc._en) ? doc._en[0] : doc._en;
+  const et = Array.isArray(doc._et) ? doc._et[0] : doc._et;
+  const labelParts = [];
+  if (en?.name) labelParts.push(en.name);
+  if (et?.name) labelParts.push(et.name);
+  const note = labelParts.length ? `Advance — ${labelParts.join(' / ')}` : 'Event booking advance';
+  const compositeId = `eventadvance:${String(doc._id)}:${doc.etIdx}:${doc.advIdx}`;
+  return {
+    _id: compositeId,
+    name: doc.clientName || 'Client',
+    receivedDate,
+    receivedIn,
+    accountName: null,
+    amountReceived: Number(adv.receivedAmount) || 0,
+    receivedBy: [adv.collectedBy, adv.givenBy].filter(Boolean).join(' / ') || '',
+    eventReference: formatEventReferenceFromBookingDoc(doc),
+    note,
+  };
+}
+
+async function aggregateEventAdvanceInflowTotals(startDateObj, endDateObj) {
+  const rows = await Event.aggregate([
+    { $unwind: { path: '$eventTypes', preserveNullAndEmptyArrays: false } },
+    { $unwind: { path: '$eventTypes.advances', preserveNullAndEmptyArrays: false } },
+    {
+      $match: {
+        'eventTypes.advances.receivedAmount': { $gt: 0 },
+        'eventTypes.advances.receivedDate': { $gte: startDateObj, $lte: endDateObj },
+      },
+    },
+    {
+      $group: {
+        _id: null,
+        total: { $sum: '$eventTypes.advances.receivedAmount' },
+        count: { $sum: 1 },
+      },
+    },
+  ])
+    .option({ maxTimeMS: 20000 })
+    .exec();
+  const r = rows[0] || {};
+  return { total: r.total || 0, count: r.count || 0 };
+}
+
+async function fetchEventAdvanceInflowRows(startDateObj, endDateObj, rowCap) {
+  return Event.aggregate([
+    { $unwind: { path: '$eventTypes', includeArrayIndex: 'etIdx', preserveNullAndEmptyArrays: false } },
+    { $unwind: { path: '$eventTypes.advances', includeArrayIndex: 'advIdx', preserveNullAndEmptyArrays: false } },
+    {
+      $match: {
+        'eventTypes.advances.receivedAmount': { $gt: 0 },
+        'eventTypes.advances.receivedDate': { $gte: startDateObj, $lte: endDateObj },
+      },
+    },
+    {
+      $lookup: {
+        from: EVENT_NAME_COLL,
+        localField: 'eventName',
+        foreignField: '_id',
+        as: '_en',
+      },
+    },
+    {
+      $lookup: {
+        from: EVENT_TYPE_COLL,
+        localField: 'eventTypes.eventType',
+        foreignField: '_id',
+        as: '_et',
+      },
+    },
+    { $sort: { 'eventTypes.advances.receivedDate': -1, createdAt: -1 } },
+    { $limit: rowCap },
+  ])
+    .option({ maxTimeMS: 20000 })
+    .exec();
+}
+
 exports.getDaybook = async (req, res) => {
   const token = req.get('Authorization');
   const decodedToken = jwt.decode(token);
@@ -123,7 +317,7 @@ exports.getDaybook = async (req, res) => {
   }
 
   const { startDate, endDate, date } = req.query;
-  const start = (startDate || date || '').toString().trim();
+  let start = (startDate || date || '').toString().trim();
   const end = (endDate || date || '').toString().trim();
 
   const YMD_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -140,8 +334,25 @@ exports.getDaybook = async (req, res) => {
     });
   }
 
+  const cutoffYmd = await getDataCutoffDate();
+  if (cutoffYmd && isYmdBeforeCutoff(end, cutoffYmd)) {
+    return res.status(STATUS.SUCCESS).json({
+      inflow: { count: 0, total: 0, data: [] },
+      outflow: { count: 0, total: 0, data: [] },
+      profitAndLoss: { value: 0, type: 'PROFIT' },
+      accounts: { openCloseBalances: [] },
+    });
+  }
+  if (cutoffYmd && isYmdBeforeCutoff(start, cutoffYmd)) {
+    start = cutoffYmd;
+  }
+
   const startDateObj = new Date(`${start}T00:00:00.000Z`);
   const endDateObj = new Date(`${end}T23:59:59.999Z`);
+  const istStartRange = getIstDayRangeAsUtc(start);
+  const istEndRange = getIstDayRangeAsUtc(end);
+  const eventStartDateObj = istStartRange?.startUtc || startDateObj;
+  const eventEndDateObj = istEndRange?.endUtc || endDateObj;
   if (Number.isNaN(startDateObj.getTime()) || Number.isNaN(endDateObj.getTime())) {
     return res.status(STATUS.BAD_REQUEST).json({ message: 'Invalid startDate/endDate' });
   }
@@ -150,6 +361,11 @@ exports.getDaybook = async (req, res) => {
   }
 
   const dataLimit = Math.min(Math.max(parseInt(req.query.limit, 10) || 200, 1), 1000);
+  const rawIncludeAdv = req.query.includeEventAdvances;
+  const includeEventAdvances =
+    rawIncludeAdv === undefined || rawIncludeAdv === null || String(rawIncludeAdv).trim() === ''
+      ? true
+      : !['false', '0', 'no'].includes(String(rawIncludeAdv).trim().toLowerCase());
 
   try {
     const inflowQuery = {
@@ -162,7 +378,17 @@ exports.getDaybook = async (req, res) => {
       updatedAt: { $gte: startDateObj, $lte: endDateObj },
     };
 
-    const [inflowTotals, outflowTotals, inflowRows, outflowRows, balances] = await Promise.all([
+    const rowFetchCap = Math.min(2000, Math.max(dataLimit * 5, dataLimit));
+
+    const [
+      manualInflowTotals,
+      eventAdvanceTotals,
+      manualInflowRows,
+      eventAdvanceRowsRaw,
+      outflowTotals,
+      outflowRows,
+      balances,
+    ] = await Promise.all([
       DaybookInflow.aggregate([
         { $match: inflowQuery },
         {
@@ -173,6 +399,21 @@ exports.getDaybook = async (req, res) => {
           },
         },
       ]).option({ maxTimeMS: 20000 }),
+
+      includeEventAdvances
+        ? aggregateEventAdvanceInflowTotals(eventStartDateObj, eventEndDateObj)
+        : Promise.resolve({ total: 0, count: 0 }),
+
+      DaybookInflow.find(inflowQuery)
+        .sort({ receivedDate: -1, createdAt: -1 })
+        .limit(rowFetchCap)
+        .populate(EVENT_REFERENCE_POPULATE)
+        .lean()
+        .exec(),
+
+      includeEventAdvances
+        ? fetchEventAdvanceInflowRows(eventStartDateObj, eventEndDateObj, rowFetchCap)
+        : Promise.resolve([]),
 
       Request.aggregate([
         { $match: outflowQuery },
@@ -185,18 +426,13 @@ exports.getDaybook = async (req, res) => {
         },
       ]).option({ maxTimeMS: 20000 }),
 
-      DaybookInflow.find(inflowQuery)
-        .sort({ receivedDate: -1, createdAt: -1 })
-        .limit(dataLimit)
-        .lean()
-        .exec(),
-
       Request.find(outflowQuery)
         .sort({ updatedAt: -1 })
         .limit(dataLimit)
-        .select('_id purpose amount_paid amount_paid_to entity_account status required_date updatedAt createdAt vendor event_reference')
+        .select('_id purpose note remarks groupBy amount_paid amount_paid_to entity_account status required_date updatedAt createdAt vendor event_reference')
         .populate('vendor', 'id name vendor_code')
-        .populate('event_reference', 'id clientName')
+        .populate(EVENT_REFERENCE_POPULATE)
+        .populate('groupBy', 'id name')
         .lean()
         .exec(),
 
@@ -208,30 +444,37 @@ exports.getDaybook = async (req, res) => {
         .exec(),
     ]);
 
-    const inflowTotalsRow = inflowTotals?.[0] || {};
+    const manualTotalsRow = manualInflowTotals?.[0] || {};
     const outflowTotalsRow = outflowTotals?.[0] || {};
 
-    const inflowTotal = inflowTotalsRow.total || 0;
-    const inflowCount = inflowTotalsRow.count || 0;
+    const manualInflowTotal = manualTotalsRow.total || 0;
+    const manualInflowCount = manualTotalsRow.count || 0;
+    const eventInflowTotal = includeEventAdvances ? (eventAdvanceTotals?.total || 0) : 0;
+    const eventInflowCount = includeEventAdvances ? (eventAdvanceTotals?.count || 0) : 0;
+
+    const inflowTotal = manualInflowTotal + eventInflowTotal;
+    const inflowCount = manualInflowCount + eventInflowCount;
     const outflowTotal = outflowTotalsRow.total || 0;
     const outflowCount = outflowTotalsRow.count || 0;
     const profitOrLoss = inflowTotal - outflowTotal;
+
+    const manualMapped = (manualInflowRows || []).map(mapManualDaybookInflowRow);
+    const eventMapped = includeEventAdvances
+      ? (eventAdvanceRowsRaw || []).map(mapEventAdvanceDocToDaybookInflow)
+      : [];
+    const mergedInflowRows = [...manualMapped, ...eventMapped].sort((a, b) => {
+      const db = daybookInflowSortMs(b.receivedDate);
+      const da = daybookInflowSortMs(a.receivedDate);
+      if (db !== da) return db - da;
+      return String(b._id).localeCompare(String(a._id));
+    });
+    const inflowData = mergedInflowRows.slice(0, dataLimit);
 
     return res.status(STATUS.SUCCESS).json({
       inflow: {
         count: inflowCount,
         total: inflowTotal,
-        data: inflowRows.map((r) => ({
-          _id: String(r._id),
-          name: r.name,
-          receivedDate: r.receivedDate,
-          receivedIn: r.receivedIn,
-          accountName: r.receivedIn === 'ACCOUNT' ? r.accountName : null,
-          amountReceived: r.amountReceived,
-          receivedBy: r.receivedBy,
-          eventReference: r.event_reference ? String(r.event_reference) : null,
-          note: r.note ?? '',
-        })),
+        data: inflowData,
       },
       outflow: {
         count: outflowCount,
@@ -246,8 +489,11 @@ exports.getDaybook = async (req, res) => {
           status: item.status,
           requiredDate: item.required_date || null,
           paidAt: item.updatedAt || item.createdAt,
+          groupBy: item.groupBy || null,
+          note: item.note || '',
+          remarks: item.remarks || '',
           vendor: item.vendor || null,
-          eventReference: item.event_reference || null,
+          eventReference: formatEventReferenceForDaybook(item.event_reference),
         })),
       },
       profitAndLoss: {
@@ -260,6 +506,7 @@ exports.getDaybook = async (req, res) => {
           balanceDate: b.balanceDate,
           cashOpeningBalance: b.cashOpeningBalance,
           cashClosingBalance: b.cashClosingBalance,
+          accountBalances: Array.isArray(b.accountBalances) ? b.accountBalances : [],
           accountOpeningBalance: b.accountOpeningBalance,
           accountClosingBalance: b.accountClosingBalance,
         })),
@@ -294,6 +541,22 @@ function requireFinanceRole(req, res) {
 function validateAmountReceived(n) {
   const x = typeof n === 'string' ? Number(n) : n;
   return Number.isFinite(x) && x >= 0;
+}
+
+function parseAccountBalances(payload, toNonNeg) {
+  if (!Array.isArray(payload)) return { error: 'accountBalances must be an array' };
+  const rows = [];
+  for (const item of payload) {
+    const accountName = (item?.accountName ?? '').toString().trim();
+    const openingBalance = toNonNeg(item?.openingBalance);
+    const closingBalance = toNonNeg(item?.closingBalance);
+    if (!accountName) return { error: 'accountBalances[].accountName is required' };
+    if (openingBalance == null || closingBalance == null) {
+      return { error: 'accountBalances[].openingBalance and accountBalances[].closingBalance must be numbers >= 0' };
+    }
+    rows.push({ accountName, openingBalance, closingBalance });
+  }
+  return { rows };
 }
 
 exports.createInflow = async (req, res) => {
@@ -545,6 +808,7 @@ exports.createOpenCloseBalance = async (req, res) => {
       balanceDate,
       cashOpeningBalance,
       cashClosingBalance,
+      accountBalances,
       accountOpeningBalance,
       accountClosingBalance,
     } = req.body || {};
@@ -560,11 +824,26 @@ exports.createOpenCloseBalance = async (req, res) => {
 
     const cashOpen = toNonNeg(cashOpeningBalance);
     const cashClose = toNonNeg(cashClosingBalance);
-    const accOpen = toNonNeg(accountOpeningBalance);
-    const accClose = toNonNeg(accountClosingBalance);
+    if (cashOpen == null || cashClose == null) {
+      return res.status(STATUS.BAD_REQUEST).json({ message: 'cashOpeningBalance and cashClosingBalance must be numbers >= 0' });
+    }
 
-    if (cashOpen == null || cashClose == null || accOpen == null || accClose == null) {
-      return res.status(STATUS.BAD_REQUEST).json({ message: 'All balances must be numbers >= 0' });
+    let accountBalancesFinal = [];
+    let accOpen = toNonNeg(accountOpeningBalance);
+    let accClose = toNonNeg(accountClosingBalance);
+
+    if (Array.isArray(accountBalances)) {
+      const parsed = parseAccountBalances(accountBalances, toNonNeg);
+      if (parsed.error) return res.status(STATUS.BAD_REQUEST).json({ message: parsed.error });
+      accountBalancesFinal = parsed.rows;
+      accOpen = parsed.rows.reduce((sum, a) => sum + a.openingBalance, 0);
+      accClose = parsed.rows.reduce((sum, a) => sum + a.closingBalance, 0);
+    }
+
+    if (accOpen == null || accClose == null) {
+      return res.status(STATUS.BAD_REQUEST).json({
+        message: 'Provide accountBalances[] OR accountOpeningBalance/accountClosingBalance as numbers >= 0',
+      });
     }
 
     try {
@@ -572,6 +851,7 @@ exports.createOpenCloseBalance = async (req, res) => {
         balanceDate: balanceDate.trim(),
         cashOpeningBalance: cashOpen,
         cashClosingBalance: cashClose,
+        accountBalances: accountBalancesFinal,
         accountOpeningBalance: accOpen,
         accountClosingBalance: accClose,
         createdBy: decodedToken.uid || decodedToken.id || null,
@@ -612,6 +892,7 @@ exports.updateOpenCloseBalance = async (req, res) => {
       balanceDate,
       cashOpeningBalance,
       cashClosingBalance,
+      accountBalances,
       accountOpeningBalance,
       accountClosingBalance,
     } = req.body || {};
@@ -627,16 +908,32 @@ exports.updateOpenCloseBalance = async (req, res) => {
 
     const cashOpen = toNonNeg(cashOpeningBalance);
     const cashClose = toNonNeg(cashClosingBalance);
-    const accOpen = toNonNeg(accountOpeningBalance);
-    const accClose = toNonNeg(accountClosingBalance);
+    if (cashOpen == null || cashClose == null) {
+      return res.status(STATUS.BAD_REQUEST).json({ message: 'cashOpeningBalance and cashClosingBalance must be numbers >= 0' });
+    }
 
-    if (cashOpen == null || cashClose == null || accOpen == null || accClose == null) {
-      return res.status(STATUS.BAD_REQUEST).json({ message: 'All balances must be numbers >= 0' });
+    let accountBalancesFinal = Array.isArray(existing.accountBalances) ? existing.accountBalances : [];
+    let accOpen = toNonNeg(accountOpeningBalance);
+    let accClose = toNonNeg(accountClosingBalance);
+
+    if (Array.isArray(accountBalances)) {
+      const parsed = parseAccountBalances(accountBalances, toNonNeg);
+      if (parsed.error) return res.status(STATUS.BAD_REQUEST).json({ message: parsed.error });
+      accountBalancesFinal = parsed.rows;
+      accOpen = parsed.rows.reduce((sum, a) => sum + a.openingBalance, 0);
+      accClose = parsed.rows.reduce((sum, a) => sum + a.closingBalance, 0);
+    }
+
+    if (accOpen == null || accClose == null) {
+      return res.status(STATUS.BAD_REQUEST).json({
+        message: 'Provide accountBalances[] OR accountOpeningBalance/accountClosingBalance as numbers >= 0',
+      });
     }
 
     existing.balanceDate = balanceDate.trim();
     existing.cashOpeningBalance = cashOpen;
     existing.cashClosingBalance = cashClose;
+    existing.accountBalances = accountBalancesFinal;
     existing.accountOpeningBalance = accOpen;
     existing.accountClosingBalance = accClose;
 
