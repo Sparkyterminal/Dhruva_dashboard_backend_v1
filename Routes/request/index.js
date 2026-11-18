@@ -58,6 +58,9 @@ router.post(
 );
 router.delete("/group-by/:id", isAuth, requestController.deleteRequestGroupBy);
 
+// CA bulk approve/reject: { ids: [...], ca_check: "APPROVED" | "REJECTED" } (CA only, max 200 ids)
+router.patch("/ca-check/bulk", isAuth, requestController.bulkUpdateCaCheck);
+
 // Owner can get specific request details
 router.get(
     "/:id",

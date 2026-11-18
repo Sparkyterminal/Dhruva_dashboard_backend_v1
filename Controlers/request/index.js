@@ -1513,3 +1513,112 @@ module.exports.deleteRequestGroupBy = async (req, res) => {
         });
     }
 };
+
+/** Max ids per PATCH /request/ca-check/bulk call. */
+const CA_BULK_MAX_IDS = 200;
+/** Parallel per-id updates inside one bulk call. */
+const CA_BULK_CONCURRENCY = 10;
+
+/**
+ * PATCH /request/ca-check/bulk
+ * Body: { ids: [requestId], ca_check: "APPROVED" | "REJECTED" }
+ * → 200 { updated: [id], failed: [{ id, message }] }
+ *
+ * Applies, per id, exactly what PATCH /request/:id does for a CA sending
+ * { ca_approved: true|false }: ca_check, ca_approved, ca_approved_by, ca_approved_at,
+ * status (APPROVED / REJECTED) and handled_by.
+ * Only requests whose ca_check is currently PENDING change. Each id is updated atomically
+ * on its own, and one bad id never fails the whole call.
+ */
+module.exports.bulkUpdateCaCheck = async (req, res) => {
+    const decodedToken = jwt.decode(req.get('Authorization'));
+    // Same rule as PATCH /request/:id: only CA may set ca_approved / ca_check.
+    if (!decodedToken?.role || decodedToken.role !== 'CA') {
+        return res.status(STATUS.UNAUTHORISED).json({ message: 'Only CA role can set ca_check' });
+    }
+
+    const { ids, ca_check } = req.body || {};
+    if (!['APPROVED', 'REJECTED'].includes(ca_check)) {
+        return res.status(STATUS.BAD_REQUEST).json({
+            message: 'ca_check must be APPROVED or REJECTED',
+            field: 'ca_check',
+        });
+    }
+    if (!Array.isArray(ids) || ids.length === 0) {
+        return res.status(STATUS.BAD_REQUEST).json({ message: 'ids must be a non-empty array', field: 'ids' });
+    }
+    if (ids.length > CA_BULK_MAX_IDS) {
+        return res.status(STATUS.BAD_REQUEST).json({
+            message: `Too many ids: max ${CA_BULK_MAX_IDS} per call`,
+            field: 'ids',
+            max: CA_BULK_MAX_IDS,
+        });
+    }
+
+    const approved = ca_check === 'APPROVED';
+    const updated = [];
+    const failed = [];
+    const seen = new Set();
+    const toUpdate = [];
+    for (const raw of ids) {
+        const id = typeof raw === 'string' ? raw.trim() : String(raw ?? '');
+        if (seen.has(id)) continue; // duplicate: processed once
+        seen.add(id);
+        if (!mongoose.Types.ObjectId.isValid(id) || String(new mongoose.Types.ObjectId(id)) !== id) {
+            failed.push({ id, message: 'Invalid id' });
+            continue;
+        }
+        toUpdate.push(id);
+    }
+
+    const updateOne = async (id) => {
+        const now = new Date();
+        const result = await Request.updateOne(
+            { _id: id, ca_check: 'PENDING' },
+            {
+                $set: {
+                    ca_check,
+                    ca_approved: approved,
+                    ca_approved_by: decodedToken.uid,
+                    ca_approved_at: now,
+                    status: ca_check,
+                    handled_by: decodedToken.uid,
+                },
+            }
+        ).maxTimeMS(15000);
+        if (result.matchedCount === 1) {
+            updated.push(id);
+            return;
+        }
+        const current = await Request.findById(id).select('ca_check').lean();
+        failed.push({
+            id,
+            message: current ? `Not pending (ca_check is ${current.ca_check || 'unset'})` : 'Not found',
+        });
+    };
+
+    try {
+        for (let i = 0; i < toUpdate.length; i += CA_BULK_CONCURRENCY) {
+            const chunk = toUpdate.slice(i, i + CA_BULK_CONCURRENCY);
+            await Promise.all(
+                chunk.map((id) =>
+                    updateOne(id).catch((error) => {
+                        console.error('bulkUpdateCaCheck id', id, error);
+                        failed.push({ id, message: 'Update failed' });
+                    })
+                )
+            );
+        }
+        // Keep the response in the caller's order.
+        const order = new Map(ids.map((raw, i) => [typeof raw === 'string' ? raw.trim() : String(raw ?? ''), i]));
+        updated.sort((a, b) => order.get(a) - order.get(b));
+        failed.sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
+        return res.status(STATUS.SUCCESS).json({ updated, failed });
+    } catch (error) {
+        console.error('bulkUpdateCaCheck:', error);
+        return res.status(STATUS.INTERNAL_SERVER_ERROR).json({
+            message: MESSAGE.internalServerError,
+            error: error.message,
+        });
+    }
+};
