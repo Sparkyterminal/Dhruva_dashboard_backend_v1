@@ -495,7 +495,10 @@ Fix these only when asked. Don't "fix" them silently as part of an unrelated tas
 6. **Don't:** rename `Controlers`/`Modals`, rename the `transation_in` field, change enum
    string casing (`'Confirmed Event'`, `'InProgress'`, …), commit `.env` or secrets, or deploy
    (`sls deploy`) without explicit approval.
-7. **Log it:** add a dated row at the **top** of §14. Include the date (YYYY-MM-DD), the
+7. **Git workflow (owner's instruction, 2026-11-18):** commit and push **directly to `main`**.
+   Don't create feature branches. Still commit and push only when asked, and scan the diff
+   for secrets first.
+8. **Log it:** add a dated row at the **top** of §14. Include the date (YYYY-MM-DD), the
    author or agent, the files touched, and what changed and why. One row per logical change.
    Also update the "Last verified" line below.
 
@@ -507,6 +510,7 @@ Newest first. Use the format: `| date | who | files | summary |`
 
 | Date | Who | Files | Summary |
 |---|---|---|---|
+| 2026-11-18 | Claude (agent) | `AGENTS.md`, git | Fast-forwarded `main` to the three feature-branch commits (8182030, 6a1bf99, e4139ad) and pushed. Added the §13 rule: commit and push directly to `main`. |
 | 2026-11-18 | Claude (agent) | `serverless.yml`, `~/.aws/credentials` (local, not in git), live DB, `Routes/daybook/DAYBOOK_V2_CONTRACT.md`, `AGENTS.md` | Added the AWS profile `dhruva-deploy` (the key for the `dashboard-dev` account) and set `provider.profile: dhruva-deploy`. The `[default]` profile is unchanged, and a backup of the credentials file is at `~/.aws/credentials.bak-2026-11-18`. Verified with `serverless info` (same stack and URL). **Ran the Daybook §5 cleanup on the owner's go-ahead:** backed up with mongoexport, then deleted 3 legacy `daybookinflows` (filtered on `clientName` missing), dropped `daybookaccountopenclosebalances` (2 rows) and deleted 5 `spreadsheetworkbooks` `daybook-*` rows. Verified afterwards that events, vendors, requests and the other workbook modules were untouched. |
 | 2026-11-18 | Claude (agent) | `Controlers/daybook`, `Routes/daybook`, `utils/daybook.js` (new), `Modals/Daybook/DaybookInflow` (reshaped), `Modals/Daybook/DaybookOutflow` (new), `Modals/Daybook/DaybookOpeningBalance` (new), `Modals/Daybook/DaybookAccountsOpenCloseBalance` (deleted), `Routes/daybook/DAYBOOK_V2_CONTRACT.md` (new), `Routes/daybook/legacy/*` (moved + banner), `Routes/API_DOCS_INDEX.md`, `Routes/FRONTEND_*.md`, `AGENTS.md` | Implemented the Daybook V2 contract: a manual inflow/outflow ledger with server-computed net/actual amounts, a single opening balance, and day-wise balances computed on read. Removed the merging of requests and booking advances, `includeEventAdvances`, and the open-close-balance routes. The cutoff is not applied to the daybook. Tested on a local MongoDB with 366 checks (300 randomized cases match the contract reference algorithm, plus HTTP validation, auth, 409, carry-forward, edit, delete and legacy rows) — all pass. **Deployed 2026-11-18** to `dashboard-dev` (same URL; DB_URL/JWT_SECRET hash-checked unchanged). Live check: health 200, `/daybook` without a token 401, opening-balance GET 200 `{asOfDate:null}`, the V2 response shape is returned, and the old open-close route returns 404. **Legacy data cleanup (contract §5) not run.** |
 | 2026-11-17 | Claude (agent) | deploy, `AGENTS.md`, `.serverless/*` | Deployed the current working tree to stage `dev` (stack `dashboard-dev`, ap-south-1). Base URL `https://gbgmfpqxbi.execute-api.ap-south-1.amazonaws.com/api/`. DB_URL and JWT_SECRET are unchanged from the previous deploy (hash-checked). Verified `/api/health` returns 200, `/api/events/minimal` returns 200 with 203 events (DB connected), and `/api/settings/data-cutoff` without a token returns 401. Added deploy docs and §12 items 14–15. |
