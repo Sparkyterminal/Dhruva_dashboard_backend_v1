@@ -90,6 +90,7 @@ into docs or this file.**
 | `TOKEN_VALIDITY` | User login | Access-token TTL, default `1d` |
 | `TOKEN_MAX_VALIDITY` | User login | Refresh-token TTL, default `7d` |
 | `PORT` | `app.js` | Default 4010 |
+| `BILLS_BUCKET`, `BILLS_BUCKET_REGION` | `utils/billStorage.js` | Everyday Expenses bill bucket (private S3). Set by `serverless.yml` from the `BillsBucket` resource. Unset locally, so bill presign/URL/save-with-bills return 503 |
 | `API_ROOT` | `utils/functions.js` | Base URL the server uses to call **its own** `/api/counter` over HTTP. **Not in `.env` today**, so department creation fails (§12) |
 | `AWS_LAMBDA_FUNCTION_NAME` | `app.js`, `lib/mongo.js` | Set automatically by Lambda and switches Lambda-specific behaviour |
 | `NODE_ENV` | serverless.yml | Set to the stage name |
@@ -113,6 +114,9 @@ Modals/Daybook/{DaybookInflow,DaybookOutflow,DaybookOpeningBalance}/index.js
 utils/
   dataCutoff.js             GLOBAL data-visibility cutoff (see §8). Very important
   daybook.js                Daybook V2 money rules, account list, validation, balance walk (see §7 /daybook)
+  everydayExpenses.js       Everyday Expenses rules engine (calculateExpense), grades, IST lock helpers, seed categories
+  billStorage.js            S3 presigned PUT/GET, HeadObject, delete for Everyday Expenses bills
+  clock.js                  Server clock (clock.now()). Use it for anything time-sensitive so tests can pin time
   statusCodes.js            STATUS constants (NOTE: NOT_FOUND = 204!)
   messages.js               MESSAGE constants
   validations.js            name/email/phone/password validators (async, return {status})
@@ -368,6 +372,29 @@ GENERAL_MEETING_NOTES. GET filters: `category`, `from`, `to` on `startAt`.
 ### `/settings`
 GET `/data-cutoff` (JWT) → `{cutoffDate}`.
 
+### `/everyday-expenses` (employee expense claims)
+**Full contract: `Routes/EverydayExpenses/EVERYDAY_EXPENSES_CONTRACT.md`**, including the
+implementation notes at its end. Every route uses JWT plus `loadExpenseUser`, which reads the
+caller's role and departments **from the DB**, not the token. **ADMIN gets 403 on everything.**
+- **Reviewers** are role CA, APPROVER or OWNER, **or** any active department named `HR`
+  (trimmed, case-insensitive). `requireReviewer` guards GET `/` (overview), `/people`,
+  PUT `/grades`, PUT `/settings`, POST/PUT `/categories`, POST `/reject` and POST `/repay`.
+  Reviewers can never reject or repay their own entries.
+- Everyone else: GET `/me`, GET `/categories`, GET `/mine?month=`, POST `/`, PUT/DELETE `/:id`
+  (own entries, before the lock), POST `/uploads/presign`, GET `/uploads/url?key=`.
+- **Money:** only `utils/everydayExpenses.js` `calculateExpense()` computes `reimbursable` and
+  `cappedBy`. Each entry stores `categorySnapshot` + `gradeAtSubmit`, so category edits never
+  change old entries.
+- **Lock:** `editableUntil` = 00:00 IST of the day after creation, using the server clock
+  (`utils/clock.js`). After that, PUT/DELETE return `409 {code:'LOCKED'}`, and nobody can
+  override it. Entries already REJECTED or REPAID return `409 {code:'CONFLICT'}`. Every
+  list/save response includes `serverTime`.
+- **Bills:** the browser uploads directly to the private S3 bucket with a presigned PUT
+  (Content-Type and Content-Length are signed). Keys are `everyday-expenses/<userId>/<YYYY-MM>/<uuid>-<name>`.
+  On save, every key must use the caller's prefix and pass HeadObject with a matching size.
+- Seed categories (14) are inserted once, lazily. Reject/repay take at most 200 ids and return
+  a result per id.
+
 ## 8. Global data-visibility cutoff (`utils/dataCutoff.js`). Know this before touching any list API
 
 The `appsettings` collection holds the key `dataVisibilityCutoffDate` (YYYY-MM-DD, inclusive).
@@ -382,6 +409,7 @@ error falls back to the default. **Older data is hidden** by raising the `$gte` 
 | Client leads list, leads estimated-budget card | `startDate` |
 | Personal calendar | `startAt` |
 | Bills list | `startDate ?? emiDate` |
+| Everyday Expenses | **exempt on purpose** (a new module with its own `claimWindowDays`) |
 | Daybook V2 | **exempt on purpose.** The ledger starts at the opening balance's `asOfDate`, and clamping would make totals disagree with balances |
 | Spreadsheet date-key modules | keys and list ranges before the cutoff return empty |
 | Login response | `dataCutoffDate` |
@@ -417,6 +445,12 @@ for simple date fields.
 | Daybook/DaybookOutflow | `daybookoutflows` | `vendorId→vendor, vendorName, vendorCode (snapshot), paidDate (STRING, indexed), paidFrom CASH/ACCOUNT, accountName, amountPaid, tdsAmount, gstAmount, actualAmountPaid (server-computed), note, createdBy` |
 | Daybook/DaybookOpeningBalance | `daybookopeningbalances` | single doc (unique `singleton: "default"`): `asOfDate, balances[{source, amount}], updatedBy` |
 
+| EverydayExpenses/Expense | `everydayexpense` | `userId, userName, departments[] (names snapshot), categoryId, categorySnapshot, gradeAtSubmit, expenseDate, addedDay, amount, units, dutyEndTime, companyProvided, priorApproval, note, bills[{key,name,size,contentType}], reimbursable, cappedBy, status SUBMITTED/REJECTED/REPAID, rejection, repayment, editableUntil`. Timestamps use `utils/clock.js` |
+| EverydayExpenses/Category | `expensecategory` | rate card. Unique (group, name). No delete (`active:false`) |
+| EverydayExpenses/Grade | `expensegrade` | `userId` unique, `grade`. No row = JUNIOR_STAFF |
+| EverydayExpenses/Settings | `expensesetting` | single doc (`singleton:"default"`): `claimWindowDays, maxBillFiles, maxBillSizeMB, categoriesSeededAt` |
+| EverydayExpenses/Audit | `everydayexpenseaudit` | **insert-only** (update and delete blocked in the model): `action, entity, entityId, actorId, actorName, at, before, after` |
+
 The old `daybookaccountopenclosebalances` collection has no model any more. It is dropped by
 the contract's §5 cleanup.
 
@@ -438,6 +472,7 @@ the contract's §5 cleanup.
 ## 11. Frontend contract docs
 `Routes/API_DOCS_INDEX.md` is the index. Per-module docs are `Routes/request/*.md`,
 `Routes/daybook/DAYBOOK_V2_CONTRACT.md` (canonical; `Routes/daybook/legacy/` is superseded),
+`Routes/EverydayExpenses/EVERYDAY_EXPENSES_CONTRACT.md`,
 `Routes/ClientsBookings/*.md`, `Routes/ClientLead/FRONTEND_ESTIMATED_BUDGET.md`,
 `Routes/MarketingTarget/FRONTEND.md` and `Routes/PersonalCalendar/FRONTEND.md`. There are
 also the consolidated files `Routes/FRONTEND_ALL_APIS_FINAL.md` and
@@ -475,6 +510,14 @@ Fix these only when asked. Don't "fix" them silently as part of an unrelated tas
     prints `command not found`. Quote the value.
 16. ~~Daybook V2 legacy data cleanup~~ **Done 2026-11-18** (see the change log). The backup is outside git at
     `~/Desktop/Projects/Dhruva/backups/daybook-legacy-2026-11-18/`.
+17. Everyday Expenses is live (2026-11-18). The bills bucket `dashboard-dev-expense-bills-661296494264`
+    has `DeletionPolicy: Retain`, so it survives stack removal. Its CORS allows all origins (`*`);
+    narrow it to the app's domains once they're known.
+18. **Old Daily Expenses removal (contract §9) is pending the owner's go-ahead:**
+    `spreadsheetworkbooks` `module:"daily-expenses"` (6 rows on 2026-11-18), then removing
+    `daily-expenses` from `ALLOWED_MODULES` in `Controlers/SpreadsheetWorkbook`. When matching
+    `/expense/i`, **never** drop the new `everydayexpenses`, `expensecategories`,
+    `expensegrades`, `expensesettings` or `everydayexpenseaudits` collections.
 
 ## 13. Maintenance protocol (MANDATORY)
 
@@ -511,6 +554,7 @@ Newest first. Use the format: `| date | who | files | summary |`
 
 | Date | Who | Files | Summary |
 |---|---|---|---|
+| 2026-11-18 | Claude (agent) | `Controlers/EverydayExpenses` (new), `Routes/EverydayExpenses` (new, + contract), `Modals/EverydayExpenses/*` (new), `utils/everydayExpenses.js`, `utils/billStorage.js`, `utils/clock.js` (new), `app.js`, `serverless.yml` (S3 bucket, IAM, env), `package.json` (`@aws-sdk/client-s3`, `@aws-sdk/s3-request-presigner`), `Routes/API_DOCS_INDEX.md`, `AGENTS.md` | Implemented the Everyday Expenses contract: reviewer rules (from the DB; ADMIN 403), the rules engine with a snapshot on each entry, the IST lock with `409 LOCKED`, S3 presigned bills with prefix and HeadObject checks, per-id reject/repay, 14 seed categories, the indexes and an insert-only audit log. Tested in-process on a local MongoDB with S3 stubbed and the clock pinned: 114 checks, including all 20 worked examples. Presigned PUT verified offline to sign content-type and content-length. **Deployed 2026-11-18** (same URL, env hashes unchanged); this created bucket `dashboard-dev-expense-bills-661296494264`. Bucket check: public access fully blocked, AES256, TLS-only policy, owner-enforced ACLs. Live check: no token or unknown user → 401; `/me` 200 (this created the default settings doc); presign → PUT with the wrong Content-Type is refused with 403, the correct PUT returns 200; signed GET bytes match; unsigned GET 403; the test object was deleted (bucket empty). Seed categories are inserted on the first `/categories` call. **Contract §9 (old Daily Expenses removal) not run.** |
 | 2026-11-18 | Claude (agent) | `Controlers/request` (`bulkUpdateCaCheck`), `Routes/request/index.js`, `Routes/request/REQUESTS_FRONTEND.md`, `AGENTS.md` | Added `PATCH /request/ca-check/bulk` for the CA bulk approve/reject screen (frontend spec CA_BULK_APPROVE_BACKEND.md). It mirrors the per-row CA `ca_approved` update, changes only PENDING requests, caps ids at 200 and returns a per-id result. Tested on a local MongoDB (16 checks, including field-for-field parity with the per-row PATCH). **Deployed 2026-11-18** to `dashboard-dev` with the `dhruva-deploy` profile (same URL; env hashes unchanged). Live: no token → 401, OWNER → 401, CA with empty ids → 400. |
 | 2026-11-18 | Claude (agent) | `AGENTS.md`, git | Fast-forwarded `main` to the three feature-branch commits (8182030, 6a1bf99, e4139ad) and pushed. Added the §13 rule: commit and push directly to `main`. |
 | 2026-11-18 | Claude (agent) | `serverless.yml`, `~/.aws/credentials` (local, not in git), live DB, `Routes/daybook/DAYBOOK_V2_CONTRACT.md`, `AGENTS.md` | Added the AWS profile `dhruva-deploy` (the key for the `dashboard-dev` account) and set `provider.profile: dhruva-deploy`. The `[default]` profile is unchanged, and a backup of the credentials file is at `~/.aws/credentials.bak-2026-11-18`. Verified with `serverless info` (same stack and URL). **Ran the Daybook §5 cleanup on the owner's go-ahead:** backed up with mongoexport, then deleted 3 legacy `daybookinflows` (filtered on `clientName` missing), dropped `daybookaccountopenclosebalances` (2 rows) and deleted 5 `spreadsheetworkbooks` `daybook-*` rows. Verified afterwards that events, vendors, requests and the other workbook modules were untouched. |

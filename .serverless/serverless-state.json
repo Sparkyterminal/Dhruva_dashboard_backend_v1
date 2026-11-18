@@ -15,7 +15,36 @@
       "environment": {
         "NODE_ENV": "dev",
         "DB_URL": "mongodb+srv://naveengccursor_db_user:JvalSatQuJ1kcDrv@dashboarddhruva.h5rq6qe.mongodb.net/?appName=dashboarddhruva",
-        "JWT_SECRET": "your-temporary-secret-change-this-in-production"
+        "JWT_SECRET": "your-temporary-secret-change-this-in-production",
+        "BILLS_BUCKET": "dashboard-dev-expense-bills-661296494264",
+        "BILLS_BUCKET_REGION": "ap-south-1"
+      },
+      "iam": {
+        "role": {
+          "statements": [
+            {
+              "Effect": "Allow",
+              "Action": [
+                "s3:PutObject",
+                "s3:GetObject",
+                "s3:DeleteObject"
+              ],
+              "Resource": "arn:aws:s3:::dashboard-dev-expense-bills-661296494264/everyday-expenses/*"
+            },
+            {
+              "Effect": "Allow",
+              "Action": [
+                "s3:ListBucket"
+              ],
+              "Resource": "arn:aws:s3:::dashboard-dev-expense-bills-661296494264",
+              "Condition": {
+                "StringLike": {
+                  "s3:prefix": "everyday-expenses/*"
+                }
+              }
+            }
+          ]
+        }
       },
       "httpApi": {
         "cors": {
@@ -167,6 +196,12 @@
                             "Fn::Sub": "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/dashboard-dev*:*:*"
                           }
                         ]
+                      },
+                      {
+                        "$ref": "$[\"service\"][\"provider\"][\"iam\"][\"role\"][\"statements\"][0]"
+                      },
+                      {
+                        "$ref": "$[\"service\"][\"provider\"][\"iam\"][\"role\"][\"statements\"][1]"
                       }
                     ]
                   }
@@ -195,7 +230,7 @@
                 "S3Bucket": {
                   "Ref": "ServerlessDeploymentBucket"
                 },
-                "S3Key": "serverless/dashboard/dev/1794987703247-2026-11-18T07:41:43.247Z/api.zip"
+                "S3Key": "serverless/dashboard/dev/1794997674587-2026-11-18T10:27:54.587Z/api.zip"
               },
               "Handler": "handler.handler",
               "Runtime": "nodejs18.x",
@@ -206,7 +241,9 @@
                 "Variables": {
                   "NODE_ENV": "dev",
                   "DB_URL": "mongodb+srv://naveengccursor_db_user:JvalSatQuJ1kcDrv@dashboarddhruva.h5rq6qe.mongodb.net/?appName=dashboarddhruva",
-                  "JWT_SECRET": "your-temporary-secret-change-this-in-production"
+                  "JWT_SECRET": "your-temporary-secret-change-this-in-production",
+                  "BILLS_BUCKET": "dashboard-dev-expense-bills-661296494264",
+                  "BILLS_BUCKET_REGION": "ap-south-1"
                 }
               },
               "Role": {
@@ -220,14 +257,14 @@
               "ApiLogGroup"
             ]
           },
-          "ApiLambdaVersionlB0rrX5gga1Ftfc3ENKPHaQY71gfoAsywC5QUi1N5oI": {
+          "ApiLambdaVersionn4T4K2j3mOVOECZgYaYVE2yNDpA7I4PSoOFsWPXUo": {
             "Type": "AWS::Lambda::Version",
             "DeletionPolicy": "Retain",
             "Properties": {
               "FunctionName": {
                 "Ref": "ApiLambdaFunction"
               },
-              "CodeSha256": "YFiI6kzctpJ4JarlF88XDNx9FxiioMKZ7RGASUAOUx8="
+              "CodeSha256": "B4WwGW4yE5mmWGPqzvrkXYdLoX3D/86YrJTDFtNQTP4="
             }
           },
           "HttpApi": {
@@ -353,6 +390,80 @@
               }
             },
             "DependsOn": "HttpApiIntegrationApi"
+          },
+          "BillsBucket": {
+            "Type": "AWS::S3::Bucket",
+            "DeletionPolicy": "Retain",
+            "UpdateReplacePolicy": "Retain",
+            "Properties": {
+              "BucketName": "dashboard-dev-expense-bills-661296494264",
+              "PublicAccessBlockConfiguration": {
+                "BlockPublicAcls": true,
+                "BlockPublicPolicy": true,
+                "IgnorePublicAcls": true,
+                "RestrictPublicBuckets": true
+              },
+              "OwnershipControls": {
+                "Rules": [
+                  {
+                    "ObjectOwnership": "BucketOwnerEnforced"
+                  }
+                ]
+              },
+              "BucketEncryption": {
+                "ServerSideEncryptionConfiguration": [
+                  {
+                    "ServerSideEncryptionByDefault": {
+                      "SSEAlgorithm": "AES256"
+                    }
+                  }
+                ]
+              },
+              "CorsConfiguration": {
+                "CorsRules": [
+                  {
+                    "AllowedMethods": [
+                      "PUT",
+                      "GET"
+                    ],
+                    "AllowedOrigins": [
+                      "*"
+                    ],
+                    "AllowedHeaders": [
+                      "Content-Type"
+                    ],
+                    "MaxAge": 3000
+                  }
+                ]
+              }
+            }
+          },
+          "BillsBucketTlsOnly": {
+            "Type": "AWS::S3::BucketPolicy",
+            "Properties": {
+              "Bucket": {
+                "Ref": "BillsBucket"
+              },
+              "PolicyDocument": {
+                "Statement": [
+                  {
+                    "Sid": "DenyInsecureTransport",
+                    "Effect": "Deny",
+                    "Principal": "*",
+                    "Action": "s3:*",
+                    "Resource": [
+                      "arn:aws:s3:::dashboard-dev-expense-bills-661296494264",
+                      "arn:aws:s3:::dashboard-dev-expense-bills-661296494264/*"
+                    ],
+                    "Condition": {
+                      "Bool": {
+                        "aws:SecureTransport": "false"
+                      }
+                    }
+                  }
+                ]
+              }
+            }
           }
         },
         "Outputs": {
@@ -367,7 +478,7 @@
           "ApiLambdaFunctionQualifiedArn": {
             "Description": "Current Lambda function version",
             "Value": {
-              "Ref": "ApiLambdaVersionlB0rrX5gga1Ftfc3ENKPHaQY71gfoAsywC5QUi1N5oI"
+              "Ref": "ApiLambdaVersionn4T4K2j3mOVOECZgYaYVE2yNDpA7I4PSoOFsWPXUo"
             },
             "Export": {
               "Name": "sls-dashboard-dev-ApiLambdaFunctionQualifiedArn"
@@ -493,6 +604,9 @@
       },
       "vpc": {}
     },
+    "custom": {
+      "billsBucket": "dashboard-dev-expense-bills-661296494264"
+    },
     "plugins": [
       "serverless-offline"
     ],
@@ -526,8 +640,87 @@
         "timeout": 29,
         "runtime": "nodejs18.x",
         "vpc": {},
-        "versionLogicalId": "ApiLambdaVersionlB0rrX5gga1Ftfc3ENKPHaQY71gfoAsywC5QUi1N5oI"
+        "versionLogicalId": "ApiLambdaVersionn4T4K2j3mOVOECZgYaYVE2yNDpA7I4PSoOFsWPXUo"
       }
+    },
+    "resources": {
+      "Resources": {
+        "BillsBucket": {
+          "Type": "AWS::S3::Bucket",
+          "DeletionPolicy": "Retain",
+          "UpdateReplacePolicy": "Retain",
+          "Properties": {
+            "BucketName": "dashboard-dev-expense-bills-661296494264",
+            "PublicAccessBlockConfiguration": {
+              "BlockPublicAcls": true,
+              "BlockPublicPolicy": true,
+              "IgnorePublicAcls": true,
+              "RestrictPublicBuckets": true
+            },
+            "OwnershipControls": {
+              "Rules": [
+                {
+                  "ObjectOwnership": "BucketOwnerEnforced"
+                }
+              ]
+            },
+            "BucketEncryption": {
+              "ServerSideEncryptionConfiguration": [
+                {
+                  "ServerSideEncryptionByDefault": {
+                    "SSEAlgorithm": "AES256"
+                  }
+                }
+              ]
+            },
+            "CorsConfiguration": {
+              "CorsRules": [
+                {
+                  "AllowedMethods": [
+                    "PUT",
+                    "GET"
+                  ],
+                  "AllowedOrigins": [
+                    "*"
+                  ],
+                  "AllowedHeaders": [
+                    "Content-Type"
+                  ],
+                  "MaxAge": 3000
+                }
+              ]
+            }
+          }
+        },
+        "BillsBucketTlsOnly": {
+          "Type": "AWS::S3::BucketPolicy",
+          "Properties": {
+            "Bucket": {
+              "Ref": "BillsBucket"
+            },
+            "PolicyDocument": {
+              "Statement": [
+                {
+                  "Sid": "DenyInsecureTransport",
+                  "Effect": "Deny",
+                  "Principal": "*",
+                  "Action": "s3:*",
+                  "Resource": [
+                    "arn:aws:s3:::dashboard-dev-expense-bills-661296494264",
+                    "arn:aws:s3:::dashboard-dev-expense-bills-661296494264/*"
+                  ],
+                  "Condition": {
+                    "Bool": {
+                      "aws:SecureTransport": "false"
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      },
+      "Outputs": {}
     },
     "configValidationMode": "warn",
     "serviceFilename": "serverless.yml",
@@ -540,8 +733,14 @@
       "functions": {
         "$ref": "$[\"service\"][\"functions\"]"
       },
+      "custom": {
+        "$ref": "$[\"service\"][\"custom\"]"
+      },
       "plugins": {
         "$ref": "$[\"service\"][\"plugins\"]"
+      },
+      "resources": {
+        "$ref": "$[\"service\"][\"resources\"]"
       },
       "package": {
         "individually": true,
@@ -552,7 +751,7 @@
           "!PAYLOAD_EXAMPLES.md"
         ],
         "artifactsS3KeyDirname": "serverless/dashboard/dev/code-artifacts",
-        "artifactDirectoryName": "serverless/dashboard/dev/1794987703247-2026-11-18T07:41:43.247Z"
+        "artifactDirectoryName": "serverless/dashboard/dev/1794997674587-2026-11-18T10:27:54.587Z"
       }
     },
     "layers": {},
@@ -560,7 +759,7 @@
   },
   "package": {
     "individually": true,
-    "artifactDirectoryName": "serverless/dashboard/dev/1794987703247-2026-11-18T07:41:43.247Z",
+    "artifactDirectoryName": "serverless/dashboard/dev/1794997674587-2026-11-18T10:27:54.587Z",
     "artifact": ""
   }
 }

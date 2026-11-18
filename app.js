@@ -97,6 +97,7 @@ const marketingTargetRoutes = require("./Routes/MarketingTarget");
 const personalCalendarRoutes = require("./Routes/PersonalCalendar");
 const spreadsheetWorkbookRoutes = require("./Routes/SpreadsheetWorkbook");
 const settingsRoutes = require("./Routes/Settings");
+const everydayExpensesRoutes = require("./Routes/EverydayExpenses");
 
 
 app.use(`${API_ROOT}department`, departmentRoutes);
@@ -119,6 +120,7 @@ app.use(`${API_ROOT}marketing-targets`, marketingTargetRoutes);
 app.use(`${API_ROOT}personal-calendar`, personalCalendarRoutes);
 app.use(`${API_ROOT}spreadsheet-workbooks`, spreadsheetWorkbookRoutes);
 app.use(`${API_ROOT}settings`, settingsRoutes);
+app.use(`${API_ROOT}everyday-expenses`, everydayExpensesRoutes);
 
 
 
