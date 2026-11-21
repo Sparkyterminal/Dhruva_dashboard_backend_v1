@@ -102,6 +102,11 @@ const eventSchema = new mongoose.Schema({
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "user" }
 }, { timestamps: true });
 
+// Employee Statistics / list queries (credited employee + month, status, first event date)
+eventSchema.index({ createdBy: 1, createdAt: -1 });
+eventSchema.index({ eventConfirmation: 1, createdAt: -1 });
+eventSchema.index({ "eventTypes.startDate": 1 });
+
 const Event = mongoose.model("Event", eventSchema);
 
 module.exports = Event;

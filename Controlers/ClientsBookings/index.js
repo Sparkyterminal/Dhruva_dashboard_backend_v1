@@ -131,142 +131,93 @@ function mapStatusToEventConfirmation(raw) {
   return map[s] || null;
 }
 
-/** Event name label whether populated object or plain string. */
-function getEventNameLabel(eventDoc) {
-  const en = eventDoc?.eventName;
-  if (typeof en === 'string') return en;
-  if (en && typeof en === 'object' && en.name != null) return String(en.name);
-  return null;
+const {
+  getEventNameLabel,
+  isCompletePaymentWedding,
+  sumAdvanceField,
+  getBookingAgreedAmount,
+  getBookingReceivedAmount,
+  getBookingExpectedAdvance,
+  computeAdvanceTotals,
+  computeSumFromEventTypesByAdvanceRule,
+  computeBookingAmountFromEventTypes,
+  roundRupee,
+  withAdvanceStates,
+} = require("../../utils/bookingMoney");
+const { isValidYmd, istYmd, istDayRange, primaryEventInfo, compareByEventDate } = require("../../utils/bookingDates");
+const clock = require("../../utils/clock");
+
+/**
+ * Optional advanceFrom / advanceTo (YYYY-MM-DD, inclusive IST days) on the event lists:
+ * keep only events with at least one advance due (advanceDate) in that range.
+ * @returns {{ filter: object|null } | { error: string }}
+ */
+function parseAdvanceRange(q) {
+  const from = q.advanceFrom != null ? String(q.advanceFrom).trim() : '';
+  const to = q.advanceTo != null ? String(q.advanceTo).trim() : '';
+  if (!from && !to) return { filter: null };
+  if (from && !isValidYmd(from)) return { error: 'advanceFrom must be YYYY-MM-DD' };
+  if (to && !isValidYmd(to)) return { error: 'advanceTo must be YYYY-MM-DD' };
+  if (from && to && from > to) return { error: 'advanceFrom must be <= advanceTo' };
+  const range = {};
+  if (from) range.$gte = istDayRange(from, from).start;
+  if (to) range.$lte = istDayRange(to, to).end;
+  return { filter: { 'eventTypes.advances': { $elemMatch: { advanceDate: range } } } };
 }
 
-/** Wedding + advancePaymentType === "complete" (package counted once). */
-function isCompletePaymentWedding(eventDoc) {
-  return (
-    getEventNameLabel(eventDoc) === 'Wedding' &&
-    eventDoc?.advancePaymentType === 'complete'
-  );
+/** sort= on the event lists: omitted (newest created first) or "eventDate". */
+function parseListSort(q) {
+  const raw = q.sort != null ? String(q.sort).trim() : '';
+  if (!raw) return { byEventDate: false };
+  if (raw.toLowerCase() === 'eventdate') return { byEventDate: true };
+  return { error: 'Invalid sort. Allowed: eventDate' };
 }
 
-function advanceDedupeKey(adv, idx) {
-  if (adv?.advanceNumber != null && adv.advanceNumber !== '') {
-    return `n:${adv.advanceNumber}`;
-  }
-  return `i:${idx}`;
+function populateEventList(q) {
+  return q
+    .populate('eventName', 'id name')
+    .populate('eventTypes.eventType', 'id name event')
+    .populate('eventTypes.venueLocation', 'id name address city state')
+    .populate('eventTypes.subVenueLocation', 'id name venue')
+    .populate('eventTypes.coordinator', 'id name contact_number email')
+    .populate('lead1', 'id name contact_number email')
+    .populate('lead2', 'id name contact_number email')
+    .populate('createdBy', 'id first_name last_name')
+    .maxTimeMS(25000)
+    .lean();
 }
 
 /**
- * Sum an advance money field across event types.
- * Complete wedding: dedupe by advanceNumber (fallback index), take max per key, then sum.
- * Else: flat sum of every nested advance.
+ * One page of the event list.
+ * Default order: createdAt desc. byEventDate: the Bookings-list event-date order across all pages
+ * (utils/bookingDates compareByEventDate), computed on a light projection, then only the page's
+ * rows are loaded and populated.
  */
-function sumAdvanceField(eventDoc, fieldName, { dedupe } = {}) {
-  if (dedupe) {
-    const byKey = new Map();
-    for (const et of eventDoc?.eventTypes || []) {
-      (et?.advances || []).forEach((adv, idx) => {
-        const key = advanceDedupeKey(adv, idx);
-        const amt = Number(adv?.[fieldName]);
-        const value = Number.isFinite(amt) ? amt : 0;
-        const prev = byKey.get(key) ?? 0;
-        if (value > prev) byKey.set(key, value);
-      });
-    }
-    let total = 0;
-    for (const v of byKey.values()) total += v;
-    return { total: roundRupee(total), count: byKey.size };
+async function fetchEventsPage(query, { page, limit, byEventDate }) {
+  if (!byEventDate) {
+    const q = populateEventList(Event.find(query).sort({ createdAt: -1 }));
+    return limit != null ? q.skip((page - 1) * limit).limit(limit) : q;
   }
-
-  let total = 0;
-  let count = 0;
-  for (const et of eventDoc?.eventTypes || []) {
-    for (const adv of et?.advances || []) {
-      count += 1;
-      const n = Number(adv?.[fieldName]);
-      total += Number.isFinite(n) ? n : 0;
-    }
-  }
-  return { total: roundRupee(total), count };
+  const today = istYmd(clock.now());
+  const lite = await Event.find(query)
+    .select('_id clientName eventTypes.startDate eventTypes.endDate')
+    .lean()
+    .maxTimeMS(25000);
+  lite.forEach((row) => { row._pe = primaryEventInfo(row, today); });
+  lite.sort(compareByEventDate);
+  const slice = limit != null ? lite.slice((page - 1) * limit, page * limit) : lite;
+  if (!slice.length) return [];
+  const docs = await populateEventList(Event.find({ _id: { $in: slice.map((r) => r._id) } }));
+  const byId = new Map(docs.map((d) => [String(d._id), d]));
+  return slice.map((r) => byId.get(String(r._id))).filter(Boolean);
 }
 
-/**
- * Dashboard agreed amount (_agreed):
- * - Wedding + advancePaymentType === "complete" → eventTypes[0].agreedAmount only
- * - Otherwise → sum of all eventTypes[].agreedAmount
- */
-function getBookingAgreedAmount(eventDoc) {
-  if (isCompletePaymentWedding(eventDoc)) {
-    return roundRupee(eventDoc?.eventTypes?.[0]?.agreedAmount);
-  }
-
-  let total = 0;
-  for (const et of eventDoc?.eventTypes || []) {
-    const n = Number(et?.agreedAmount);
-    total += Number.isFinite(n) ? n : 0;
-  }
-  return roundRupee(total);
-}
-
-/** Received amount — complete wedding dedupes by advanceNumber (max per key). */
-function getBookingReceivedAmount(eventDoc) {
-  return sumAdvanceField(eventDoc, 'receivedAmount', {
-    dedupe: isCompletePaymentWedding(eventDoc),
-  }).total;
-}
-
-/** Expected advance schedule total — same complete-wedding dedupe as received. */
-function getBookingExpectedAdvance(eventDoc) {
-  return sumAdvanceField(eventDoc, 'expectedAmount', {
-    dedupe: isCompletePaymentWedding(eventDoc),
-  }).total;
-}
-
-function computeAdvanceTotals(eventDoc) {
-  const dedupe = isCompletePaymentWedding(eventDoc);
-  const receivedInfo = sumAdvanceField(eventDoc, 'receivedAmount', { dedupe });
-  const expectedInfo = sumAdvanceField(eventDoc, 'expectedAmount', { dedupe });
-  const agreedAmount = getBookingAgreedAmount(eventDoc);
-  const received = receivedInfo.total;
-  const expected = expectedInfo.total;
-  return {
-    totalExpectedAdvance: expected,
-    totalReceivedAmount: received,
-    pendingAdvanceAmount: Math.max(0, expected - received),
-    advanceEntriesCount: expectedInfo.count,
-    agreedAmount,
-    pendingAmount: Math.max(0, agreedAmount - received),
-  };
-}
-
-/**
- * advancePaymentType === 'complete' → use first eventTypes[] row only for the field;
- * otherwise ('separate' or unset) → sum the field across all eventTypes[]
- */
-function computeSumFromEventTypesByAdvanceRule(doc, fieldKey) {
-  const types = doc.eventTypes || [];
-  if (!types.length) return 0;
-  const pick = (t) => {
-    const x = Number(t?.[fieldKey]);
-    return Number.isFinite(x) ? x : 0;
-  };
-  if (doc.advancePaymentType === 'complete') {
-    return pick(types[0]);
-  }
-  return types.reduce((sum, t) => sum + pick(t), 0);
-}
-
-/** Sum of totalPayable (complete vs separate rule) — used by leaderboard */
-function computeBookingAmountFromEventTypes(doc) {
-  return computeSumFromEventTypesByAdvanceRule(doc, 'totalPayable');
+/** List-row decoration: advances[].state + primaryEventDate (Bookings-list rule). */
+function decorateEventRow(ev, today) {
+  return { ...withAdvanceStates(ev), primaryEventDate: primaryEventInfo(ev, today).date };
 }
 
 const AGG_MAX_MS = 25000;
-
-/** Summary money fields are whole rupees (no paise / float noise in JSON). */
-function roundRupee(n) {
-  const x = Number(n);
-  if (!Number.isFinite(x)) return 0;
-  return Math.round(x);
-}
 
 const EVENT_MONEY_SELECT =
   'eventConfirmation eventName advancePaymentType eventTypes.agreedAmount eventTypes.totalPayable eventTypes.advances';
@@ -1017,7 +968,8 @@ exports.getEvent = async (req, res) => {
     const { byEventId, counts } = await fetchBudgetReportMapsForEventIds([event._id]);
 
     return res.status(200).json({
-      event,
+      // Serialize exactly like res.json(event) (keeps populated docs' toJSON transforms), then decorate.
+      event: decorateEventRow(JSON.parse(JSON.stringify(event)), istYmd(clock.now())),
       budgetReport: byEventId.get(String(event._id)) || null,
       budgetReportsCount: counts.get(String(event._id)) || 0,
     });
@@ -1297,8 +1249,8 @@ exports.getConfirmedEventsBalanceSheet = async (req, res) => {
     if (startDate && endDate && startDate > endDate) {
       return res.status(STATUS.BAD_REQUEST).json({ message: 'startDate must be <= endDate' });
     }
-    const venueIdRaw = (req.query.venue || req.query.venueLocation || '').toString().trim();
-    const subVenueIdRaw = (req.query.subVenue || req.query.subVenueLocation || '').toString().trim();
+    const venueIdRaw = (req.query.venue || req.query.venueLocation || req.query.venueId || '').toString().trim();
+    const subVenueIdRaw = (req.query.subVenue || req.query.subVenueLocation || req.query.subVenueId || '').toString().trim();
     const venueId = venueIdRaw ? venueIdRaw : null;
     const subVenueId = subVenueIdRaw ? subVenueIdRaw : null;
 
@@ -1502,8 +1454,8 @@ exports.getAllEvents = async (req, res) => {
     };
     const startDate = parseDate(req.query.startDate);
     const endDate = parseDate(req.query.endDate);
-    const venueIdRaw = (req.query.venue || req.query.venueLocation || '').toString().trim();
-    const subVenueIdRaw = (req.query.subVenue || req.query.subVenueLocation || '').toString().trim();
+    const venueIdRaw = (req.query.venue || req.query.venueLocation || req.query.venueId || '').toString().trim();
+    const subVenueIdRaw = (req.query.subVenue || req.query.subVenueLocation || req.query.subVenueId || '').toString().trim();
     const venueId = venueIdRaw ? venueIdRaw : null;
     const subVenueId = subVenueIdRaw ? subVenueIdRaw : null;
 
@@ -1608,28 +1560,19 @@ exports.getAllEvents = async (req, res) => {
       subVenueIds: idQueryValues(subVenueId),
     });
 
+    const advanceRange = parseAdvanceRange(req.query);
+    if (advanceRange.error) return res.status(STATUS.BAD_REQUEST).json({ message: advanceRange.error });
+    if (advanceRange.filter) Object.assign(baseQuery, advanceRange.filter);
+    const listSort = parseListSort(req.query);
+    if (listSort.error) return res.status(STATUS.BAD_REQUEST).json({ message: listSort.error, allowed: ['eventDate'] });
+
     const query = mappedConfirmation
       ? { ...baseQuery, eventConfirmation: mappedConfirmation }
       : baseQuery;
 
-    const baseFind = Event.find(query)
-      .populate('eventName', 'id name')
-      .populate('eventTypes.eventType', 'id name event')
-      .populate('eventTypes.venueLocation', 'id name address city state')
-      .populate('eventTypes.subVenueLocation', 'id name venue')
-      .populate('eventTypes.coordinator', 'id name contact_number email')
-      .populate('lead1', 'id name contact_number email')
-      .populate('lead2', 'id name contact_number email')
-      .populate('createdBy', 'id first_name last_name')
-      .sort({ createdAt: -1 })
-      .maxTimeMS(25000)
-      .lean();
-
     const [totalEvents, events, advanceSummaryAll, payableSummaryAll, agreedSummaryAll, totalsByStatus, leadsEstimatedBudget] = await Promise.all([
       Event.countDocuments(query).maxTimeMS(25000),
-      limit != null
-        ? baseFind.skip((page - 1) * limit).limit(limit)
-        : baseFind,
+      fetchEventsPage(query, { page, limit, byEventDate: listSort.byEventDate }),
       aggregateEventsAdvanceSummary(query),
       aggregateEventsTotalPayableSummary(query),
       aggregateEventsAgreedSummary(query),
@@ -1639,10 +1582,11 @@ exports.getAllEvents = async (req, res) => {
 
     totalsByStatus.all.totalEstimatedBudget = leadsEstimatedBudget;
 
-    const eventsWithTotals = events.map((ev) => {
-      const advanceTotals = computeAdvanceTotals(ev);
-      return { ...ev, advanceTotals };
-    });
+    const today = istYmd(clock.now());
+    const eventsWithTotals = events.map((ev) => ({
+      ...decorateEventRow(ev, today),
+      advanceTotals: computeAdvanceTotals(ev),
+    }));
 
     const eventsWithBudget = await mergeBudgetIntoEventRows(eventsWithTotals);
 
@@ -1716,8 +1660,8 @@ exports.getMyEvents = async (req, res) => {
     };
     const startDate = parseDate(req.query.startDate);
     const endDate = parseDate(req.query.endDate);
-    const venueIdRaw = (req.query.venue || req.query.venueLocation || '').toString().trim();
-    const subVenueIdRaw = (req.query.subVenue || req.query.subVenueLocation || '').toString().trim();
+    const venueIdRaw = (req.query.venue || req.query.venueLocation || req.query.venueId || '').toString().trim();
+    const subVenueIdRaw = (req.query.subVenue || req.query.subVenueLocation || req.query.subVenueId || '').toString().trim();
     const venueId = venueIdRaw ? venueIdRaw : null;
     const subVenueId = subVenueIdRaw ? subVenueIdRaw : null;
 
@@ -1777,31 +1721,23 @@ exports.getMyEvents = async (req, res) => {
       subVenueIds: idQueryValues(subVenueId),
     });
 
-    const baseFind = Event.find(query)
-      .populate('eventName', 'id name')
-      .populate('eventTypes.eventType', 'id name event')
-      .populate('eventTypes.venueLocation', 'id name address city state')
-      .populate('eventTypes.subVenueLocation', 'id name venue')
-      .populate('eventTypes.coordinator', 'id name contact_number email')
-      .populate('lead1', 'id name contact_number email')
-      .populate('lead2', 'id name contact_number email')
-      .populate('createdBy', 'id first_name last_name')
-      .sort({ createdAt: -1 })
-      .maxTimeMS(25000)
-      .lean();
+    const advanceRange = parseAdvanceRange(req.query);
+    if (advanceRange.error) return res.status(STATUS.BAD_REQUEST).json({ message: advanceRange.error });
+    if (advanceRange.filter) Object.assign(query, advanceRange.filter);
+    const listSort = parseListSort(req.query);
+    if (listSort.error) return res.status(STATUS.BAD_REQUEST).json({ message: listSort.error, allowed: ['eventDate'] });
 
     const [totalEvents, events, advanceSummaryAll, payableSummaryAll, agreedSummaryAll] = await Promise.all([
       Event.countDocuments(query).maxTimeMS(25000),
-      limit != null
-        ? baseFind.skip((page - 1) * limit).limit(limit)
-        : baseFind,
+      fetchEventsPage(query, { page, limit, byEventDate: listSort.byEventDate }),
       aggregateEventsAdvanceSummary(query),
       aggregateEventsTotalPayableSummary(query),
       aggregateEventsAgreedSummary(query),
     ]);
 
+    const today = istYmd(clock.now());
     const eventsWithTotals = events.map((ev) => ({
-      ...ev,
+      ...decorateEventRow(ev, today),
       advanceTotals: computeAdvanceTotals(ev),
     }));
 

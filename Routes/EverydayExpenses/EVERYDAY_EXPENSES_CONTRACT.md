@@ -16,7 +16,7 @@ Everyday Expenses is **new**. It replaces the old Excel-style Daily Expenses, wh
 
 Every logged-in user **except ADMIN** (Admin has no access to Everyday Expenses: return `403` on every endpoint) can **add, see, edit (until the lock) and delete (until the lock) their own expenses**, and read the categories/rate card.
 
-**Expense reviewers** are users whose **role is `CA`, `APPROVER` or `OWNER`, or whose department is named `HR`** (match trimmed, case-insensitive; the user may have several departments, any one counts). Reviewers can additionally: see everyone's expenses, manage categories/grades/settings, reject, and mark repaid.
+**Expense reviewers** are users whose **role is `CA`, `APPROVER` or `OWNER`, or any of whose departments is named `HR DEPARTMENT` or `HR`** (trim, collapse repeated spaces, case-insensitive; the user may have several departments, any one counts; only active, non-archived departments count). HR staff have role `DEPARTMENT`. The live HR department is `name: "HR DEPARTMENT"`, `department_id: 9`, `_id: 69007c4a3f65a8a483094d6e`. Implemented once in `utils/everydayExpenses.js` `isExpenseReviewer()`. Reviewers can additionally: see everyone's expenses, manage categories/grades/settings, reject, and mark repaid.
 
 | Action | Everyone except Admin (own data) | Reviewer |
 |---|:-:|:-:|
@@ -300,6 +300,7 @@ The two old Excel-style screens are removed from the frontend. Their data must g
 ## Backend implementation notes
 
 - **Seeding:** the 14 section 6 categories are inserted on the first `GET`/`POST /categories` and recorded in `expensesettings.categoriesSeededAt`, so they are never re-added, even after one is renamed.
+- **Reviewer rule:** `isExpenseReviewer()` in `utils/everydayExpenses.js` is the only implementation, and `loadExpenseUser` computes `req.expenseUser.isReviewer` with it once per request. To make Accounts staff reviewers later, add `'ACCOUNTS'` to `REVIEWER_ROLES` there (a one-line change). The 2026-11-21 fix accepted `HR DEPARTMENT`; before that only `HR` matched, so the 2 real HR users were not reviewers.
 - **Reviewer and role come from the database** user, not from the token. A token that still says `ADMIN` or `OWNER` after a role change gets the current DB role. Departments only count when active and not archived (same as login).
 - **Reviewed entries are frozen for the employee:** after a `REJECTED` or `REPAID` decision, `PUT`/`DELETE` returns `409 { code: "CONFLICT" }` even before the lock, so a repaid amount can never change.
 - **`companyProvided: true`** on a `companyProvidedZero` category short-circuits: the reimbursable amount is `0`, and the other switches (time, per-day limit, approval, bill) are skipped. `amount` is optional in that case.

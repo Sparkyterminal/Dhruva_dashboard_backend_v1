@@ -117,6 +117,10 @@ utils/
   everydayExpenses.js       Everyday Expenses rules engine (calculateExpense), grades, IST lock helpers, seed categories
   billStorage.js            S3 presigned PUT/GET, HeadObject, delete for Everyday Expenses bills
   clock.js                  Server clock (clock.now()). Use it for anything time-sensitive so tests can pin time
+  reviewerAccess.js         THE reviewer rule + loadUserAccess() (Everyday Expenses + Employee Statistics)
+  bookingMoney.js           Booking money rules (payable, complete-wedding dedupe, advance state). Shared by Bookings + Employee Stats
+  bookingDates.js           IST day helpers + Bookings-list primary event date / eventDate sort
+  employeeStats.js          Employee Statistics definitions (Totals object, months, previous period, monthly top)
   statusCodes.js            STATUS constants (NOTE: NOT_FOUND = 204!)
   messages.js               MESSAGE constants
   validations.js            name/email/phone/password validators (async, return {status})
@@ -279,7 +283,12 @@ List query params: `status|eventConfirmation` (`confirmed|inprogress|cancelled|c
 `subVenue|subVenueLocation`, `page`, `limit` (≤ 500, unpaginated when omitted), `search`
 (balance-sheet only).
 
-**Booking money rules (keep consistent across every rollup):**
+**Added 2026-11-21 (optional, additive):** `sort=eventDate` (Bookings-list order, stable across
+pages), `primaryEventDate` on each row, `advances[].state` (received/partial/pending from the
+amounts), `advanceFrom`/`advanceTo` (IST days) and the aliases `venueId`/`subVenueId`. These apply
+to GET `/` and `/my-events`; see `Routes/ClientsBookings/EVENTS_LIST_FRONTEND.md`.
+
+**Booking money rules (keep consistent across every rollup; they live in `utils/bookingMoney.js`, never copy them):**
 - `advancePaymentType === 'complete'` → payable = `eventTypes[0].totalPayable` only.
   Otherwise, sum every `eventTypes[].totalPayable`.
 - **Wedding + `complete`** (event name label === `"Wedding"`) → agreed =
@@ -372,12 +381,29 @@ GENERAL_MEETING_NOTES. GET filters: `category`, `from`, `to` on `startAt`.
 ### `/settings`
 GET `/data-cutoff` (JWT) → `{cutoffDate}`.
 
+### `/employee-stats` (bookings per employee per month)
+**Full contract: `Routes/EmployeeStats/EMPLOYEE_STATS_CONTRACT.md`.** It uses JWT plus
+`requireStatsReviewer`: the same reviewer rule as Everyday Expenses (`utils/reviewerAccess.js`).
+Everyone else, including ADMIN, gets 403.
+- GET `/filters`, GET `/?from&to[&dateBasis=booked|event][&department][&userId…]`, and
+  GET `/:userId/bookings` (`userId` may be `unassigned`).
+- **Credited employee:** `bookedBy`, falling back to `createdBy` (`bookedBy` doesn't exist today).
+- **Month:** the IST month of `createdAt` (booked) or of the first ceremony date (event).
+- **Money:** `utils/bookingMoney.js` (same as the Bookings screens).
+- `months`, `monthly` and each `byMonth` cover every month in the range, zeros included.
+  `previous` is the same-length period just before `from`, and is `null` when it would start
+  before the floor.
+- Answers are cached for 60 s per caller and query (in memory, per Lambda container).
+
 ### `/everyday-expenses` (employee expense claims)
 **Full contract: `Routes/EverydayExpenses/EVERYDAY_EXPENSES_CONTRACT.md`**, including the
 implementation notes at its end. Every route uses JWT plus `loadExpenseUser`, which reads the
 caller's role and departments **from the DB**, not the token. **ADMIN gets 403 on everything.**
-- **Reviewers** are role CA, APPROVER or OWNER, **or** any active department named `HR`
-  (trimmed, case-insensitive). `requireReviewer` guards GET `/` (overview), `/people`,
+- **Reviewers** are role CA, APPROVER or OWNER, **or** any active department named
+  `HR DEPARTMENT` or `HR` (trim, collapse spaces, case-insensitive). HR staff have role
+  `DEPARTMENT`; the live department is `HR DEPARTMENT` (`department_id` 9). The rule lives only in
+  `utils/reviewerAccess.js` (`isExpenseReviewer`, `loadUserAccess`; re-exported by
+  `utils/everydayExpenses.js`); never re-implement it. `requireReviewer` guards GET `/` (overview), `/people`,
   PUT `/grades`, PUT `/settings`, POST/PUT `/categories`, POST `/reject` and POST `/repay`.
   Reviewers can never reject or repay their own entries.
 - Everyone else: GET `/me`, GET `/categories`, GET `/mine?month=`, POST `/`, PUT/DELETE `/:id`
@@ -409,6 +435,7 @@ error falls back to the default. **Older data is hidden** by raising the `$gte` 
 | Client leads list, leads estimated-budget card | `startDate` |
 | Personal calendar | `startAt` |
 | Bills list | `startDate ?? emiDate` |
+| Employee Statistics | `from` is clamped up to the cutoff; `previous` is `null` when it would start before it |
 | Everyday Expenses | **exempt on purpose** (a new module with its own `claimWindowDays`) |
 | Daybook V2 | **exempt on purpose.** The ledger starts at the opening balance's `asOfDate`, and clamping would make totals disagree with balances |
 | Spreadsheet date-key modules | keys and list ranges before the cutoff return empty |
@@ -515,6 +542,11 @@ Fix these only when asked. Don't "fix" them silently as part of an unrelated tas
     narrow it to the app's domains once they're known.
 18. ~~Old Daily Expenses removal~~ **Done 2026-11-18** (see the change log). The backup is outside git at
     `~/Desktop/Projects/Dhruva/backups/daily-expenses-legacy-2026-11-18/`.
+19. **`Almost Booked`** is used by Employee Statistics, but the booking model's `eventConfirmation`
+    enum only allows `Confirmed Event`, `InProgress` and `Cancelled`, so a booking saved with it
+    fails validation. The bookings status filters and `totalsByStatus` don't know it either.
+    Decide with the frontend before adding it.
+20. **`bookedBy`** isn't a booking field. Employee Statistics credits `createdBy` until it exists.
 
 ## 13. Maintenance protocol (MANDATORY)
 
@@ -551,6 +583,8 @@ Newest first. Use the format: `| date | who | files | summary |`
 
 | Date | Who | Files | Summary |
 |---|---|---|---|
+| 2026-11-21 | Claude (agent) | `Controlers/EmployeeStats` (new), `Routes/EmployeeStats` (new, + contract), `utils/employeeStats.js`, `utils/reviewerAccess.js`, `utils/bookingMoney.js`, `utils/bookingDates.js` (new), `Controlers/ClientsBookings`, `Modals/ClientsBookings` (3 indexes), `Controlers/EverydayExpenses`, `utils/everydayExpenses.js`, `app.js`, docs | **Employee Statistics** (frontend spec EMPLOYEE_STATS_BACKEND.md): 3 reviewer-only endpoints; the worked example and all edge cases reproduce exactly (68 checks); on a local copy of the live data the totals matched an independent DB calculation (186 bookings, ₹228,096,631.20 booked). **Bookings** (ADVANCE_CALENDAR + BOOKINGS_LIST_EVENT_DATE_SORT specs, optional parts): `sort=eventDate`, `primaryEventDate`, `advances[].state`, `advanceFrom`/`advanceTo`, `venueId`/`subVenueId` aliases (24 checks). Moved the booking money rules to `utils/bookingMoney.js` and the reviewer rule to `utils/reviewerAccess.js`. Old `main` and new code gave identical bookings responses on the live-data copy (15 checks, incl. all 203 single-booking reads) and on fixtures (17); the Everyday Expenses (114) and HR (51) suites still pass. The local data copy was deleted afterwards. CA bulk spec unchanged (already built). **Deployed 2026-11-21** (env unchanged). Live: 7 bookings fingerprints identical to the pre-change baseline (no bookings changed in between); employee-stats totals match an independent DB calculation (186 / 162 / ₹228,096,631.20); HR 200, non-HR DEPARTMENT 403, ADMIN 403, no token 401; `sort=eventDate`, advance states and `advanceFrom`/`advanceTo` respond correctly. |
+| 2026-11-21 | Claude (agent) | `utils/everydayExpenses.js`, `Controlers/EverydayExpenses`, contract, `AGENTS.md` | **HR reviewer fix** (frontend spec HR_REVIEWER_ACCESS_BACKEND_FIX.md): the reviewer check only matched a department named exactly `HR`, but the live department is `HR DEPARTMENT`, so its 2 users (role DEPARTMENT) weren't reviewers. Added the shared `isExpenseReviewer()` (names `HR`/`HR DEPARTMENT`, trimmed, spaces collapsed, case-insensitive; ADMIN never) and used it in `loadExpenseUser`, the only place the flag is computed. Tested on a local MongoDB with a copy of the real department record: all 10 spec checks (51 assertions, including inactive-department and name variants), and the full 114-check regression passes. **Deployed 2026-11-21** (env unchanged). Live, read-only: the real HR DEPARTMENT user gets `/me` isReviewer true and 200 on overview/people/categories; a non-HR DEPARTMENT user gets false and 403 on overview/people; CA is unchanged. That first live `/categories` call inserted the 14 seed categories (designed first-use seed). |
 | 2026-11-18 | Claude (agent) | live DB, `Controlers/SpreadsheetWorkbook`, `Routes/SpreadsheetWorkbook`, `Modals/SpreadsheetWorkbook`, contract, `AGENTS.md` | Ran Everyday Expenses contract §9 on the owner's go-ahead. Looked first: 6 `daily-expenses` workbooks, and no older Expenses collection (every `/expense/i` collection belongs to the new module). Backed up with mongoexport (6 rows), deleted the 6 rows (abort guard on the count), and verified that budget-report (28), client-leads (1) and the new collections are untouched. Removed `daily-expenses` from `ALLOWED_MODULES`/`DATE_KEY_MODULES` (GET/PUT/DELETE now return 400, checked against the controller). **Deployed 2026-11-18** (env hashes unchanged). Live: `daily-expenses` GET → 400 Unsupported module; budget-report list still 28; health 200. |
 | 2026-11-18 | Claude (agent) | `Controlers/EverydayExpenses` (new), `Routes/EverydayExpenses` (new, + contract), `Modals/EverydayExpenses/*` (new), `utils/everydayExpenses.js`, `utils/billStorage.js`, `utils/clock.js` (new), `app.js`, `serverless.yml` (S3 bucket, IAM, env), `package.json` (`@aws-sdk/client-s3`, `@aws-sdk/s3-request-presigner`), `Routes/API_DOCS_INDEX.md`, `AGENTS.md` | Implemented the Everyday Expenses contract: reviewer rules (from the DB; ADMIN 403), the rules engine with a snapshot on each entry, the IST lock with `409 LOCKED`, S3 presigned bills with prefix and HeadObject checks, per-id reject/repay, 14 seed categories, the indexes and an insert-only audit log. Tested in-process on a local MongoDB with S3 stubbed and the clock pinned: 114 checks, including all 20 worked examples. Presigned PUT verified offline to sign content-type and content-length. **Deployed 2026-11-18** (same URL, env hashes unchanged); this created bucket `dashboard-dev-expense-bills-661296494264`. Bucket check: public access fully blocked, AES256, TLS-only policy, owner-enforced ACLs. Live check: no token or unknown user → 401; `/me` 200 (this created the default settings doc); presign → PUT with the wrong Content-Type is refused with 403, the correct PUT returns 200; signed GET bytes match; unsigned GET 403; the test object was deleted (bucket empty). Seed categories are inserted on the first `/categories` call. **Contract §9 (old Daily Expenses removal) not run.** |
 | 2026-11-18 | Claude (agent) | `Controlers/request` (`bulkUpdateCaCheck`), `Routes/request/index.js`, `Routes/request/REQUESTS_FRONTEND.md`, `AGENTS.md` | Added `PATCH /request/ca-check/bulk` for the CA bulk approve/reject screen (frontend spec CA_BULK_APPROVE_BACKEND.md). It mirrors the per-row CA `ca_approved` update, changes only PENDING requests, caps ids at 200 and returns a per-id result. Tested on a local MongoDB (16 checks, including field-for-field parity with the per-row PATCH). **Deployed 2026-11-18** to `dashboard-dev` with the `dhruva-deploy` profile (same URL; env hashes unchanged). Live: no token → 401, OWNER → 401, CA with empty ids → 400. |

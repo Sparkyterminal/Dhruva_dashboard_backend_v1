@@ -5,8 +5,9 @@
  * Access (contract section 1) is enforced here, never in the frontend:
  *   - ADMIN: 403 on everything (loadExpenseUser).
  *   - Everyone else: own expenses, categories, /me.
- *   - Reviewers (role CA/APPROVER/OWNER, or any department named HR): everything else,
- *     but never reject/repay their own entries.
+ *   - Reviewers (utils/reviewerAccess isExpenseReviewer: role CA/APPROVER/OWNER, or any department named
+ *     "HR" / "HR DEPARTMENT"): everything else, but never reject/repay their own entries.
+ *   req.expenseUser.isReviewer is computed ONCE here and is the only reviewer flag endpoints read.
  * Money: utils/everydayExpenses.js calculateExpense() only. Lock: utils/clock.js (server clock).
  */
 const crypto = require('crypto');
@@ -23,6 +24,7 @@ const Category = require('../../Modals/EverydayExpenses/Category');
 const Grade = require('../../Modals/EverydayExpenses/Grade');
 const Settings = require('../../Modals/EverydayExpenses/Settings');
 const Audit = require('../../Modals/EverydayExpenses/Audit');
+const { loadUserAccess } = require('../../utils/reviewerAccess');
 
 const KEY_ROOT = 'everyday-expenses/';
 const QUERY_MAX_MS = 20000;
@@ -70,32 +72,14 @@ exports.loadExpenseUser = async (req, res, next) => {
     if (!req.userId || !isObjectId(String(req.userId))) {
       return res.status(STATUS.UNAUTHORISED).json({ message: MESSAGE.unauthorized });
     }
-    const user = await User.findById(req.userId)
-      .select('first_name last_name role department is_active is_archived')
-      .lean();
-    if (!user || user.is_active === false || user.is_archived === true) {
+    const access = await loadUserAccess(req.userId);
+    if (!access) {
       return res.status(STATUS.UNAUTHORISED).json({ message: MESSAGE.unauthorized });
     }
-    if (user.role === 'ADMIN') {
+    if (access.role === 'ADMIN') {
       return res.status(STATUS.FORBIDDEN).json({ message: 'Admin has no access to Everyday Expenses' });
     }
-    const deptIds = Array.isArray(user.department?.department) ? user.department.department : [];
-    const depts = deptIds.length
-      ? await Department.find({ _id: { $in: deptIds }, is_active: true, is_archived: false }).select('name').lean()
-      : [];
-    const departments = depts.map((d) => String(d.name || '').trim()).filter(Boolean);
-    const isReviewer =
-      EE.REVIEWER_ROLES.includes(user.role) ||
-      departments.some((n) => n.toUpperCase() === EE.REVIEWER_DEPARTMENT);
-
-    req.expenseUser = {
-      id: String(user._id),
-      objectId: user._id,
-      name: displayName(user),
-      role: user.role,
-      departments,
-      isReviewer,
-    };
+    req.expenseUser = access;
     return next();
   } catch (error) {
     return serverError(res, 'loadExpenseUser', error);

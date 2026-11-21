@@ -19,8 +19,8 @@ const GRADE_LABELS = {
 const CALC_TYPES = ['ACTUAL', 'PER_UNIT', 'CAPPED_PER_UNIT', 'FIXED_MAX'];
 const STATUSES = ['SUBMITTED', 'REJECTED', 'REPAID'];
 const REPAY_MODES = ['CASH', 'BANK', 'UPI'];
-const REVIEWER_ROLES = ['CA', 'APPROVER', 'OWNER'];
-const REVIEWER_DEPARTMENT = 'HR';
+// The reviewer rule lives in utils/reviewerAccess.js (shared with Employee Statistics); re-exported here.
+const { REVIEWER_ROLES, REVIEWER_DEPARTMENT_NAMES, normDepartmentName, isExpenseReviewer } = require('./reviewerAccess');
 
 const BILL_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'application/pdf'];
 const DEFAULT_SETTINGS = { claimWindowDays: 7, maxBillFiles: 5, maxBillSizeMB: 10 };
@@ -459,7 +459,7 @@ module.exports = {
   STATUSES,
   REPAY_MODES,
   REVIEWER_ROLES,
-  REVIEWER_DEPARTMENT,
+  REVIEWER_DEPARTMENT_NAMES,
   BILL_TYPES,
   DEFAULT_SETTINGS,
   SETTINGS_LIMITS,
@@ -474,6 +474,8 @@ module.exports = {
   istYmd,
   nextIstMidnight,
   isLocked,
+  normDepartmentName,
+  isExpenseReviewer,
   rupees,
   validateCategory,
   categorySnapshot,

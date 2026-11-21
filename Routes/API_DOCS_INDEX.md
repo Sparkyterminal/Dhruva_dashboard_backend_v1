@@ -10,6 +10,9 @@ Use this file as the single shareable index for frontend implementation.
 - `Routes/daybook/DAYBOOK_V2_CONTRACT.md`: **canonical** Daybook V2 contract (manual inflow/outflow ledger, computed balances, opening balance)
 - `Routes/daybook/legacy/`: old daybook docs, **superseded, do not implement**
 
+## Employee Statistics
+- `Routes/EmployeeStats/EMPLOYEE_STATS_CONTRACT.md`: bookings and amounts per employee per month, monthly top, previous-period comparison (reviewers only)
+
 ## Everyday Expenses
 - `Routes/EverydayExpenses/EVERYDAY_EXPENSES_CONTRACT.md`: employee expense claims, rate card, lock, S3 bills, reviewer overview
 
